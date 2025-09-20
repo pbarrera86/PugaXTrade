@@ -5,10 +5,19 @@ on:
 jobs:
   mac:
     runs-on: macos-latest
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
@@ -18,37 +27,32 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip wheel
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install pandas numpy requests lxml openpyxl xlsxwriter pyinstaller
+          fi
 
-      - name: Prepare script with fixed Documents outdir
-        id: prepare
+      # Parchea el script para guardar SIEMPRE en ~/Documents/PugaX_Trade
+      - name: Prepare script (fixed Documents outdir)
         shell: bash
         run: |
           set -euo pipefail
-
-          # Preferred file name with outdir logic already integrated
           TARGET="Analisis_Financiero_FINVIZ_v6_mac_outdir.py"
-
           if [ -f "$TARGET" ]; then
-            echo "Using existing $TARGET"
             echo "SCRIPT_PATH=$TARGET" >> $GITHUB_ENV
-          else
-            echo "No $TARGET found; patching original script..."
-            ORIG="Analisis_Financiero_FINVIZ_v6.py"
-            if [ ! -f "$ORIG" ]; then
-              echo "::error::No se encontró $ORIG en el repo."
-              exit 1
-            fi
-
-            # Run a small Python patcher that injects the Documents/PugaX_Trade outdir
-            python - << 'PY'
-import re, sys
+            exit 0
+          fi
+          ORIG="Analisis_Financiero_FINVIZ_v6.py"
+          if [ ! -f "$ORIG" ]; then
+            echo "::error::No se encontró $ORIG en el repo."
+            exit 1
+          fi
+          python - << 'PY'
+import re
 from pathlib import Path
-
 src = Path("Analisis_Financiero_FINVIZ_v6.py").read_text(encoding="utf-8")
-
 if "from pathlib import Path" not in src:
-    # insert after first import block
     lines = src.splitlines()
     ins = 0
     for i, line in enumerate(lines):
@@ -59,7 +63,6 @@ if "from pathlib import Path" not in src:
             break
     lines.insert(ins, "from pathlib import Path")
     src = "\n".join(lines)
-
 block = (
     "\n# --- Salida: carpeta fija en Documentos (macOS/Windows/Linux) ---\n"
     "APP_OUT_DIR = Path.home() / \"Documents\" / \"PugaX_Trade\"\n"
@@ -67,14 +70,12 @@ block = (
     "OUTFILE = str(APP_OUT_DIR / \"semaforo_analisis_todas.xlsx\")\n"
     "HISTORY_CSV = str(APP_OUT_DIR / \"semaforo_historico_todas.csv\")\n"
 )
-
 pat_both = re.compile(r"(?ms)^\s*OUTFILE\s*=.*?\n\s*HISTORY_CSV\s*=.*?\n")
 if pat_both.search(src):
     src = pat_both.sub(block + "\n", src, count=1)
 else:
     src = re.sub(r"(?m)^\s*OUTFILE\s*=.*$", "", src)
     src = re.sub(r"(?m)^\s*HISTORY_CSV\s*=.*$", "", src)
-    # place block after the Path import
     anchor = "from pathlib import Path"
     idx = src.find(anchor)
     if idx != -1:
@@ -82,19 +83,21 @@ else:
         src = src[:end+1] + block + src[end+1:]
     else:
         src = block + "\n" + src
-
 Path("Analisis_Financiero_FINVIZ_v6_mac_outdir.py").write_text(src, encoding="utf-8")
 PY
-            echo "SCRIPT_PATH=$TARGET" >> $GITHUB_ENV
-          fi
+          echo "SCRIPT_PATH=$TARGET" >> $GITHUB_ENV
 
-      # (Opcional) Smoke test para validar imports (no falla el build si hay GUI)
-      - name: Smoke test (CLI)
+      # Verifica imports (NO ejecuta la GUI)
+      - name: Verify Python imports (no-GUI)
         run: |
-          python "$SCRIPT_PATH" || true
+          python - << 'PY'
+          import pandas, numpy, requests, lxml, openpyxl, xlsxwriter
+          print("Imports OK")
+          PY
 
       - name: Build .app with PyInstaller
         run: |
+          set -euo pipefail
           PYI_EXTRA=""
           if [ -f "tickers.txt" ]; then
             PYI_EXTRA='--add-data "tickers.txt:."'
@@ -103,7 +106,6 @@ PY
           if [ -f "pugax.icns" ]; then
             ICON_OPT='--icon pugax.icns'
           fi
-
           pyinstaller --windowed --name "PugaX Trade" $ICON_OPT $PYI_EXTRA             --hidden-import lxml._elementpath --hidden-import lxml.etree             "$SCRIPT_PATH"
 
       - name: Make DMG
