@@ -20,17 +20,81 @@ jobs:
           python -m pip install --upgrade pip wheel
           pip install -r requirements.txt
 
-      # Opcional: smoke test para validar imports (no detiene el job si falla)
+      - name: Prepare script with fixed Documents outdir
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Preferred file name with outdir logic already integrated
+          TARGET="Analisis_Financiero_FINVIZ_v6_mac_outdir.py"
+
+          if [ -f "$TARGET" ]; then
+            echo "Using existing $TARGET"
+            echo "SCRIPT_PATH=$TARGET" >> $GITHUB_ENV
+          else
+            echo "No $TARGET found; patching original script..."
+            ORIG="Analisis_Financiero_FINVIZ_v6.py"
+            if [ ! -f "$ORIG" ]; then
+              echo "::error::No se encontró $ORIG en el repo."
+              exit 1
+            fi
+
+            # Run a small Python patcher that injects the Documents/PugaX_Trade outdir
+            python - << 'PY'
+import re, sys
+from pathlib import Path
+
+src = Path("Analisis_Financiero_FINVIZ_v6.py").read_text(encoding="utf-8")
+
+if "from pathlib import Path" not in src:
+    # insert after first import block
+    lines = src.splitlines()
+    ins = 0
+    for i, line in enumerate(lines):
+        if line.strip().startswith(("import ", "from ")):
+            ins = i + 1
+            while ins < len(lines) and lines[ins].strip().startswith(("import ", "from ")):
+                ins += 1
+            break
+    lines.insert(ins, "from pathlib import Path")
+    src = "\n".join(lines)
+
+block = (
+    "\n# --- Salida: carpeta fija en Documentos (macOS/Windows/Linux) ---\n"
+    "APP_OUT_DIR = Path.home() / \"Documents\" / \"PugaX_Trade\"\n"
+    "APP_OUT_DIR.mkdir(parents=True, exist_ok=True)\n"
+    "OUTFILE = str(APP_OUT_DIR / \"semaforo_analisis_todas.xlsx\")\n"
+    "HISTORY_CSV = str(APP_OUT_DIR / \"semaforo_historico_todas.csv\")\n"
+)
+
+pat_both = re.compile(r"(?ms)^\s*OUTFILE\s*=.*?\n\s*HISTORY_CSV\s*=.*?\n")
+if pat_both.search(src):
+    src = pat_both.sub(block + "\n", src, count=1)
+else:
+    src = re.sub(r"(?m)^\s*OUTFILE\s*=.*$", "", src)
+    src = re.sub(r"(?m)^\s*HISTORY_CSV\s*=.*$", "", src)
+    # place block after the Path import
+    anchor = "from pathlib import Path"
+    idx = src.find(anchor)
+    if idx != -1:
+        end = src.find("\n", idx)
+        src = src[:end+1] + block + src[end+1:]
+    else:
+        src = block + "\n" + src
+
+Path("Analisis_Financiero_FINVIZ_v6_mac_outdir.py").write_text(src, encoding="utf-8")
+PY
+            echo "SCRIPT_PATH=$TARGET" >> $GITHUB_ENV
+          fi
+
+      # (Opcional) Smoke test para validar imports (no falla el build si hay GUI)
       - name: Smoke test (CLI)
         run: |
-          python Analisis_Financiero_FINVIZ_v6.py || true
+          python "$SCRIPT_PATH" || true
 
       - name: Build .app with PyInstaller
         run: |
-          # --windowed: app sin consola
-          # --name: nombre de la app
-          # --icon: icono .icns (si existe)
-          # --add-data: recursos (en macOS usa ':')
           PYI_EXTRA=""
           if [ -f "tickers.txt" ]; then
             PYI_EXTRA='--add-data "tickers.txt:."'
@@ -40,7 +104,7 @@ jobs:
             ICON_OPT='--icon pugax.icns'
           fi
 
-          pyinstaller --windowed --name "PugaX Trade" $ICON_OPT $PYI_EXTRA             --hidden-import lxml._elementpath --hidden-import lxml.etree             Analisis_Financiero_FINVIZ_v6.py
+          pyinstaller --windowed --name "PugaX Trade" $ICON_OPT $PYI_EXTRA             --hidden-import lxml._elementpath --hidden-import lxml.etree             "$SCRIPT_PATH"
 
       - name: Make DMG
         run: |
