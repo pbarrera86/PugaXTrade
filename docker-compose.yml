@@ -1,7 +1,4 @@
 # ── PugaX Trade — docker-compose.yml ─────────────────────────────────────────
-# Las variables de entorno se configuran en Dokploy → Environment Variables.
-# Este archivo solo las referencia con ${VAR} — nunca escribas valores aquí.
-
 services:
   pugaxtrade:
     build:
@@ -11,22 +8,20 @@ services:
     container_name: pugaxtrade_app
     restart: unless-stopped
 
-    # ── Puerto interno de Shiny Server ────────────────────────────────────────
     ports:
       - "3838:3838"
 
-    # ── Variables de entorno (todas tomadas desde Dokploy) ────────────────────
+    networks:
+      - dokploy-network
+
     environment:
-      # URL pública
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
 
-      # Stripe
       STRIPE_SECRET_KEY:      ${STRIPE_SECRET_KEY}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
       STRIPE_PRICE_ID:        ${STRIPE_PRICE_ID}
       STRIPE_ALLOW_TEST:      ${STRIPE_ALLOW_TEST}
 
-      # Base de datos Neon (variables individuales)
       PGHOST:     ${PGHOST}
       PGPORT:     ${PGPORT}
       PGDATABASE: ${PGDATABASE}
@@ -34,19 +29,16 @@ services:
       PGPASSWORD: ${PGPASSWORD}
       PGSSLMODE:  ${PGSSLMODE}
 
-      # SMTP (leído por auth_helpers.R vía Sys.getenv)
-      SMTP_HOST:         ${SMTP_HOST}
-      SMTP_PORT:         ${SMTP_PORT}
-      SMTP_USER:         ${SMTP_USER}
-      SMTP_PASS:         ${SMTP_PASS}
-      SMTP_FROM:         ${SMTP_FROM}
-      SMTP_ADMIN_EMAIL:  ${SMTP_ADMIN_EMAIL}
+      SMTP_HOST:        ${SMTP_HOST}
+      SMTP_PORT:        ${SMTP_PORT}
+      SMTP_USER:        ${SMTP_USER}
+      SMTP_PASS:        ${SMTP_PASS}
+      SMTP_FROM:        ${SMTP_FROM}
+      SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
 
-    # ── Volumen para logs de Shiny Server ─────────────────────────────────────
     volumes:
       - shiny_logs:/var/log/shiny-server
 
-    # ── Health check ──────────────────────────────────────────────────────────
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3838/"]
       interval: 30s
@@ -56,3 +48,7 @@ services:
 
 volumes:
   shiny_logs:
+
+networks:
+  dokploy-network:
+    external: true
