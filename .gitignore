@@ -1,0 +1,9 @@
+# Credenciales — nunca subir a Git
+smtp.yml
+.Renviron
+*.Renviron
+
+# R session
+.Rhistory
+.RData
+.Rproj.user/
