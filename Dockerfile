@@ -46,15 +46,19 @@ RUN R -e "install.packages(c( \
     'markdown' \
   ), repos='https://cloud.r-project.org', dependencies=TRUE)"
 
+# ── Shiny Server config: single-app mode, app_idle_timeout 0 ──────────────────
+COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
+
 # ── Copy app into shiny-server's default site folder ──────────────────────────
 RUN rm -rf /srv/shiny-server/*
 COPY . /srv/shiny-server/
 
 # ── Permissions ───────────────────────────────────────────────────────────────
-RUN chown -R shiny:shiny /srv/shiny-server
+RUN chown -R shiny:shiny /srv/shiny-server \
+    && chown root:root /etc/shiny-server/shiny-server.conf \
+    && chmod 644 /etc/shiny-server/shiny-server.conf
 
-# ── Shiny Server config: run on port 3838, single-app mode ────────────────────
-# (optional override — default rocker config already listens on 3838)
+# ── Puerto Shiny Server ────────────────────────────────────────────────────────
 EXPOSE 3838
 
 CMD ["/usr/bin/shiny-server"]
