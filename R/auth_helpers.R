@@ -16,35 +16,43 @@ suppressWarnings({
 }
 
 # -------- Config --------
+# Lee env vars primero (Docker/Dokploy); si no existen, cae a smtp.yml (local).
 .auth_load_cfg <- function() {
-  path <- "smtp.yml"
-  if (!file.exists(path)) {
-    return(list())
+  smtp_host <- Sys.getenv("SMTP_HOST", unset = "")
+  if (nzchar(smtp_host)) {
+    return(list(
+      host                         = smtp_host,
+      port                         = Sys.getenv("SMTP_PORT", unset = "587"),
+      user                         = Sys.getenv("SMTP_USER", unset = ""),
+      pass                         = Sys.getenv("SMTP_PASS", unset = ""),
+      from                         = Sys.getenv("SMTP_FROM", unset = ""),
+      admin_email                  = Sys.getenv("SMTP_ADMIN_EMAIL", unset = ""),
+      app_base_url                 = Sys.getenv("PUBLIC_BASE_URL", unset = "http://localhost:3838"),
+      send_plain_password_in_emails = TRUE
+    ))
   }
+
+  # Fallback: smtp.yml para desarrollo local
+  path <- "smtp.yml"
+  if (!file.exists(path)) return(list())
   cfg <- tryCatch(yaml::read_yaml(path), error = function(e) {
     message("Error reading smtp.yml: ", e$message)
     NULL
   })
-  if (inherits(cfg, "try-error") || is.null(cfg)) {
-    return(list())
-  }
+  if (inherits(cfg, "try-error") || is.null(cfg)) return(list())
   cfg
 }
 
 .app_base_url <- function() {
-  # Primero PUBLIC_BASE_URL (app.R), luego APP_BASE_URL y, por último, localhost
   env_public <- Sys.getenv("PUBLIC_BASE_URL", unset = NA_character_)
-  if (!is.na(env_public) && nzchar(env_public)) {
-    return(env_public)
-  }
+  if (!is.na(env_public) && nzchar(env_public)) return(env_public)
+
   env_app <- Sys.getenv("APP_BASE_URL", unset = NA_character_)
-  if (!is.na(env_app) && nzchar(env_app)) {
-    return(env_app)
-  }
+  if (!is.na(env_app) && nzchar(env_app)) return(env_app)
+
   cfg <- .auth_load_cfg()
-  if (.nz(cfg$app_base_url)) {
-    return(cfg$app_base_url)
-  }
+  if (.nz(cfg$app_base_url)) return(cfg$app_base_url)
+
   "http://127.0.0.1:3838"
 }
 
@@ -55,9 +63,7 @@ auth_build_reset_link <- function(token) {
 # -------- Emails --------
 .email_cfg_allows_plain <- function(cfg) {
   env <- Sys.getenv("EMAIL_PLAIN_PASSWORDS", NA_character_)
-  if (!is.na(env)) {
-    return(isTRUE(as.logical(env)))
-  }
+  if (!is.na(env)) return(isTRUE(as.logical(env)))
   isTRUE(cfg$send_plain_password_in_emails %||% TRUE)
 }
 
@@ -66,9 +72,7 @@ auth_build_reset_link <- function(token) {
 }
 
 .smtp_server <- function(cfg) {
-  if (is.null(cfg$host)) {
-    return(NULL)
-  }
+  if (is.null(cfg$host) || !nzchar(cfg$host)) return(NULL)
   emayili::server(
     host     = cfg$host,
     port     = as.integer(cfg$port %||% 587),
@@ -78,14 +82,13 @@ auth_build_reset_link <- function(token) {
   )
 }
 
+# -------- Envío: Bienvenida --------
 auth_send_welcome_credentials <- function(user_row, username, plain_password = NULL) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
-  include_pwd <- .email_cfg_allows_plain(cfg) && .nz(plain_password)
+  if (is.null(srv)) return(invisible(FALSE))
 
+  include_pwd <- .email_cfg_allows_plain(cfg) && .nz(plain_password)
   body <- paste0(
     "¡Bienvenido/a a PugaX Trade!\n\n",
     "Tu cuenta fue creada.\n\n",
@@ -105,14 +108,13 @@ auth_send_welcome_credentials <- function(user_row, username, plain_password = N
   invisible(TRUE)
 }
 
+# -------- Envío: Notificación admin nuevo usuario --------
 auth_notify_admin_new_user <- function(user_row, plain_password = NULL) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
-  include_pwd <- .email_cfg_allows_plain(cfg) && .nz(plain_password)
+  if (is.null(srv)) return(invisible(FALSE))
 
+  include_pwd <- .email_cfg_allows_plain(cfg) && .nz(plain_password)
   body <- paste0(
     "Nuevo usuario (", .auth_now(), "):\n\n",
     "Usuario: ", user_row$username[[1]], "\n",
@@ -129,23 +131,17 @@ auth_notify_admin_new_user <- function(user_row, plain_password = NULL) {
     emayili::subject("Nuevo registro – PugaX") |>
     emayili::text(body)
 
-  tryCatch(
-    {
-      srv(email)
-    },
-    error = function(e) {
-      message("Error sending admin new user email: ", e$message)
-    }
-  )
+  tryCatch(srv(email), error = function(e) {
+    message("Error sending admin new user email: ", e$message)
+  })
   invisible(TRUE)
 }
 
+# -------- Envío: Reset de contraseña --------
 auth_send_reset_email <- function(user_row, reset_link) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
+  if (is.null(srv)) return(invisible(FALSE))
 
   body <- paste0(
     "Hola ", user_row$name[[1]], ",\n\n",
@@ -165,19 +161,15 @@ auth_send_reset_email <- function(user_row, reset_link) {
   invisible(TRUE)
 }
 
+# -------- Envío: Verificación de email --------
 auth_send_verification_email <- function(user_row, token) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
+  if (is.null(srv)) return(invisible(FALSE))
 
   verify_link <- paste0(.app_base_url(), "?verify=", token)
-
   safe_val <- function(x) {
-    if (is.null(x) || length(x) == 0 || is.na(x)) {
-      return("")
-    }
+    if (is.null(x) || length(x) == 0 || is.na(x)) return("")
     as.character(x)
   }
 
@@ -198,23 +190,17 @@ auth_send_verification_email <- function(user_row, token) {
 
   message("DEBUG: Sending verification email to ", user_row$email[[1]])
   tryCatch(
-    {
-      srv(email)
-      message("DEBUG: Verification email sent!")
-    },
-    error = function(e) {
-      message("Error sending verification email: ", e$message)
-    }
+    { srv(email); message("DEBUG: Verification email sent!") },
+    error = function(e) message("Error sending verification email: ", e$message)
   )
   invisible(TRUE)
 }
 
+# -------- Envío: Notificación admin cambio de contraseña --------
 auth_notify_admin_password_change <- function(user_row) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
+  if (is.null(srv)) return(invisible(FALSE))
 
   body <- paste0(
     "Aviso de seguridad (", .auth_now(), "):\n\n",
@@ -233,12 +219,11 @@ auth_notify_admin_password_change <- function(user_row) {
   invisible(TRUE)
 }
 
+# -------- Envío: Notificación admin cuenta eliminada --------
 auth_notify_admin_account_deleted <- function(user_id, username, user_email) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
+  if (is.null(srv)) return(invisible(FALSE))
 
   body <- paste0(
     "Aviso de Admin (", .auth_now(), "):\n\n",
@@ -259,12 +244,11 @@ auth_notify_admin_account_deleted <- function(user_id, username, user_email) {
   invisible(TRUE)
 }
 
+# -------- Envío: Log de acción admin --------
 auth_notify_admin_action <- function(action_name, details_text) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
+  if (is.null(srv)) return(invisible(FALSE))
 
   body <- paste0(
     "Registro de Actividad Admin (", .auth_now(), "):\n\n",
@@ -283,18 +267,17 @@ auth_notify_admin_action <- function(action_name, details_text) {
   invisible(TRUE)
 }
 
+# -------- Envío: Cuenta eliminada (al usuario) --------
 auth_send_account_deleted_email <- function(user_email, user_name) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
+  if (is.null(srv)) return(invisible(FALSE))
 
   body <- paste0(
     "Hola ", user_name, ",\n\n",
     "Te informamos que tu cuenta en PugaX Trade ha sido eliminada permanentemente por el administrador.\n",
     "Si consideras que esto es un error, por favor ponte en contacto con el soporte.\n\n",
-    "PugaX App: https://apps.pugainversor.com/pugaxtrade/\n\n",
+    "PugaX App: ", .app_base_url(), "\n\n",
     "Saludos,\nEquipo PugaX\n"
   )
 
@@ -308,34 +291,35 @@ auth_send_account_deleted_email <- function(user_email, user_name) {
   invisible(TRUE)
 }
 
+# -------- Envío: Pago exitoso --------
 auth_send_payment_success <- function(user_row) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(invisible(FALSE))
-  }
+  if (is.null(srv)) return(invisible(FALSE))
+
   body <- paste0(
     "Hola ", user_row$name[[1]], ",\n\n",
     "¡Pago completado! Tu membresía ha sido activada.\n\n",
-    "Accede: https://apps.pugainversor.com/pugaxtrade/\n\n",
+    "Accede: ", .app_base_url(), "\n\n",
     "Gracias por tu confianza.\n",
     "Equipo PugaX\n"
   )
+
   email <- emayili::envelope() |>
     emayili::from(cfg$from %||% "no-reply@pugax.trade") |>
     emayili::to(user_row$email[[1]]) |>
     emayili::subject("Pago completado – PugaX Trade") |>
     emayili::text(body)
+
   try(srv(email), silent = TRUE)
   invisible(TRUE)
 }
 
+# -------- Envío: Genérico --------
 auth_send_generic_email <- function(to_email, subject, body_text) {
   cfg <- .auth_load_cfg()
   srv <- .smtp_server(cfg)
-  if (is.null(srv)) {
-    return(list(ok = FALSE, message = "SMTP no configurado."))
-  }
+  if (is.null(srv)) return(list(ok = FALSE, message = "SMTP no configurado."))
 
   email <- emayili::envelope() |>
     emayili::from(cfg$from %||% "no-reply@pugax.trade") |>
@@ -343,90 +327,77 @@ auth_send_generic_email <- function(to_email, subject, body_text) {
     emayili::subject(subject) |>
     emayili::text(body_text)
 
-  # Use tryCatch for better error visibility
-  res <- tryCatch(
-    {
-      srv(email)
-      list(ok = TRUE)
-    },
+  tryCatch(
+    { srv(email); list(ok = TRUE) },
     error = function(e) {
       message("SMTP Error sending to ", to_email, ": ", e$message)
       list(ok = FALSE, message = paste("Fallo envío SMTP:", e$message))
     }
   )
-  res
 }
 
-# -------- Stripe config/helpers --------
+# -------- Stripe: config --------
 stripe_cfg <- function() {
   cfgf <- .auth_load_cfg()
   read_env <- function(key, fallback = "") {
     v <- Sys.getenv(key, unset = NA_character_)
-    if (!is.na(v) && nzchar(v)) {
-      return(v)
-    }
+    if (!is.na(v) && nzchar(v)) return(v)
     if (is.null(fallback)) "" else as.character(fallback)
   }
-  secret <- read_env("STRIPE_SECRET_KEY", cfgf$stripe_secret_key)
-  publishable <- read_env("STRIPE_PUBLISHABLE_KEY", cfgf$stripe_publishable_key)
-  price_id <- read_env("STRIPE_PRICE_ID", cfgf$stripe_price_id)
-  app_base <- .app_base_url()
-  allow_raw <- read_env("STRIPE_ALLOW_TEST", cfgf$stripe_allow_test %||% "0")
-  allow_test <- tolower(as.character(allow_raw)) %in% c("1", "true", "yes", "t")
+
+  secret      <- read_env("STRIPE_SECRET_KEY",      cfgf$stripe_secret_key)
+  publishable <- read_env("STRIPE_PUBLISHABLE_KEY",  cfgf$stripe_publishable_key)
+  price_id    <- read_env("STRIPE_PRICE_ID",         cfgf$stripe_price_id)
+  app_base    <- .app_base_url()
+  allow_raw   <- read_env("STRIPE_ALLOW_TEST",       cfgf$stripe_allow_test %||% "0")
+  allow_test  <- tolower(as.character(allow_raw)) %in% c("1", "true", "yes", "t")
 
   list(
-    secret       = if (nzchar(secret)) secret else NULL,
-    publishable  = if (nzchar(publishable)) publishable else NULL,
-    price_id     = if (nzchar(price_id)) price_id else NULL,
+    secret      = if (nzchar(secret)) secret else NULL,
+    publishable = if (nzchar(publishable)) publishable else NULL,
+    price_id    = if (nzchar(price_id)) price_id else NULL,
     app_base_url = app_base,
-    allow_test   = allow_test
+    allow_test  = allow_test
   )
 }
 
 stripe_mode_from_secret <- function(secret) {
-  if (is.null(secret) || !nzchar(secret)) {
-    return("unknown")
-  }
-  if (grepl("^sk_live_", secret)) {
-    return("live")
-  }
-  if (grepl("^sk_test_", secret)) {
-    return("test")
-  }
+  if (is.null(secret) || !nzchar(secret)) return("unknown")
+  if (grepl("^sk_live_", secret)) return("live")
+  if (grepl("^sk_test_", secret)) return("test")
   "unknown"
 }
 
-# -------- Stripe Checkout --------
+# -------- Stripe: Checkout --------
 auth_create_checkout_session <- function(user_row) {
   cfg <- stripe_cfg()
   if (is.null(cfg$secret) || is.null(cfg$price_id)) {
     return(list(ok = FALSE, message = "Stripe no configurado (STRIPE_SECRET_KEY / STRIPE_PRICE_ID)."))
   }
-
   if (grepl("^sk_test_", cfg$secret) && !isTRUE(cfg$allow_test)) {
     return(list(ok = FALSE, message = "Modo TEST detectado. Activa STRIPE_ALLOW_TEST=1 para pruebas."))
   }
 
   success_url <- paste0(cfg$app_base_url, "?paid=1&session_id={CHECKOUT_SESSION_ID}")
-  cancel_url <- paste0(cfg$app_base_url, "?paid=0")
+  cancel_url  <- paste0(cfg$app_base_url, "?paid=0")
 
   res <- try(httr::POST(
     "https://api.stripe.com/v1/checkout/sessions",
     httr::authenticate(cfg$secret, ""),
     httr::add_headers(`Idempotency-Key` = paste0("ik_", as.integer(Sys.time()), "_", sample(1000:9999, 1))),
     body = list(
-      mode = "subscription",
-      success_url = success_url,
-      cancel_url = cancel_url,
-      client_reference_id = as.character(user_row$id[[1]]),
-      "line_items[0][price]" = cfg$price_id,
-      "line_items[0][quantity]" = 1,
-      customer_email = user_row$email[[1]],
-      "metadata[username]" = user_row$username[[1]],
-      "metadata[env]" = if (cfg$allow_test) "test" else "live",
-      "subscription_data[description]" = "Puga Inversor – Membresía Anual",
-      "allow_promotion_codes" = "true",
-      "automatic_tax[enabled]" = "true"
+      mode                              = "subscription",
+      success_url                       = success_url,
+      cancel_url                        = cancel_url,
+      client_reference_id               = as.character(user_row$id[[1]]),
+      "line_items[0][price]"            = cfg$price_id,
+      "line_items[0][quantity]"         = 1,
+      customer_email                    = user_row$email[[1]],
+      "metadata[username]"              = user_row$username[[1]],
+      "metadata[env]"                   = if (cfg$allow_test) "test" else "live",
+      "subscription_data[description]"  = "Puga Inversor – Membresía Anual",
+      "allow_promotion_codes"           = "true",
+      "automatic_tax[enabled]"          = "true"
     ),
     encode = "form"
   ), silent = TRUE)
@@ -439,108 +410,93 @@ auth_create_checkout_session <- function(user_row) {
     return(list(ok = FALSE, message = paste("Stripe error:", if (is.character(ct)) ct else httr::status_code(res))))
   }
   ct <- httr::content(res)
-  if (is.null(ct$url)) {
-    return(list(ok = FALSE, message = "Stripe respondió sin URL."))
-  }
+  if (is.null(ct$url)) return(list(ok = FALSE, message = "Stripe respondió sin URL."))
   list(ok = TRUE, url = ct$url, id = ct$id %||% NA_character_)
 }
 
+# -------- Stripe: Verificar pago --------
 auth_check_checkout_paid <- function(session_id, retries = 6, wait_seconds = 1) {
   cfg <- stripe_cfg()
-  if (is.null(cfg$secret)) {
-    return(list(ok = FALSE, message = "Stripe no configurado."))
-  }
-  if (is.null(session_id) || !nzchar(session_id)) {
-    return(list(ok = FALSE, message = "Falta session_id."))
-  }
+  if (is.null(cfg$secret)) return(list(ok = FALSE, message = "Stripe no configurado."))
+  if (is.null(session_id) || !nzchar(session_id)) return(list(ok = FALSE, message = "Falta session_id."))
 
-  email <- NA_character_
-  customer <- NA_character_
+  email        <- NA_character_
+  customer     <- NA_character_
   subscription <- NA_character_
+
   for (i in seq_len(retries)) {
     res <- try(httr::GET(
       paste0("https://api.stripe.com/v1/checkout/sessions/", session_id),
       httr::authenticate(cfg$secret, "")
     ), silent = TRUE)
+
     if (!inherits(res, "try-error") && httr::status_code(res) %in% 200:299) {
-      ct <- httr::content(res)
-      customer <- ct$customer %||% NA_character_
+      ct           <- httr::content(res)
+      customer     <- ct$customer     %||% NA_character_
       subscription <- ct$subscription %||% NA_character_
-      if (!is.null(ct$customer_details) && !is.null(ct$customer_details$email)) email <- ct$customer_details$email
+      if (!is.null(ct$customer_details$email)) email <- ct$customer_details$email
       if (is.null(email) || !nzchar(email)) email <- ct$customer_email %||% NA_character_
-      status <- ct$status %||% ""
+
+      status         <- ct$status         %||% ""
       payment_status <- ct$payment_status %||% ""
       if (identical(status, "complete") || identical(payment_status, "paid")) {
-        return(list(ok = TRUE, paid = TRUE, email = email, customer = customer, subscription = subscription))
+        return(list(ok = TRUE, paid = TRUE, email = email,
+                    customer = customer, subscription = subscription))
       }
     }
     Sys.sleep(wait_seconds)
   }
-  list(ok = TRUE, paid = FALSE, email = email, customer = customer, subscription = subscription)
+  list(ok = TRUE, paid = FALSE, email = email,
+       customer = customer, subscription = subscription)
 }
 
-# -------- Subscriptions (para "Renovación automática") --------
+# -------- Stripe: Suscripciones --------
 .stripe_subscription_get <- function(sub_id) {
   cfg <- stripe_cfg()
-  if (is.null(cfg$secret) || !.nz(sub_id)) {
-    return(NULL)
-  }
+  if (is.null(cfg$secret) || !.nz(sub_id)) return(NULL)
   res <- try(httr::GET(
     paste0("https://api.stripe.com/v1/subscriptions/", sub_id),
     httr::authenticate(cfg$secret, "")
   ), silent = TRUE)
-  if (inherits(res, "try-error") || !(httr::status_code(res) %in% 200:299)) {
-    return(NULL)
-  }
+  if (inherits(res, "try-error") || !(httr::status_code(res) %in% 200:299)) return(NULL)
   try(httr::content(res), silent = TRUE)
 }
 
 .stripe_subscription_set_cancel_at_period_end <- function(sub_id, flag) {
   cfg <- stripe_cfg()
-  if (is.null(cfg$secret) || !.nz(sub_id)) {
-    return(FALSE)
-  }
+  if (is.null(cfg$secret) || !.nz(sub_id)) return(FALSE)
   res <- try(httr::POST(
     paste0("https://api.stripe.com/v1/subscriptions/", sub_id),
     httr::authenticate(cfg$secret, ""),
     body = list(cancel_at_period_end = tolower(as.character(flag))),
     encode = "form"
   ), silent = TRUE)
-  if (inherits(res, "try-error") || !(httr::status_code(res) %in% 200:299)) {
-    return(FALSE)
-  }
+  if (inherits(res, "try-error") || !(httr::status_code(res) %in% 200:299)) return(FALSE)
   TRUE
 }
 
 auth_get_subscription_status <- function(user_row) {
   sub_id <- user_row$stripe_subscription_id[[1]]
   st <- .stripe_subscription_get(sub_id)
-  if (is.null(st)) {
-    return(NULL)
-  }
-  # auto-renew = TRUE si NO está marcado cancel_at_period_end
+  if (is.null(st)) return(NULL)
   list(auto_renew = isFALSE(isTRUE(st$cancel_at_period_end)))
 }
 
 auth_cancel_auto_renew <- function(user_row) {
-  sub_id <- user_row$stripe_subscription_id[[1]]
-  .stripe_subscription_set_cancel_at_period_end(sub_id, TRUE)
+  .stripe_subscription_set_cancel_at_period_end(user_row$stripe_subscription_id[[1]], TRUE)
 }
 
 auth_reactivate_auto_renew <- function(user_row) {
-  sub_id <- user_row$stripe_subscription_id[[1]]
-  .stripe_subscription_set_cancel_at_period_end(sub_id, FALSE)
+  .stripe_subscription_set_cancel_at_period_end(user_row$stripe_subscription_id[[1]], FALSE)
 }
 
+# -------- Stripe: Portal de facturación --------
 auth_renew_now <- function(user_row) {
   cfg <- stripe_cfg()
-  if (is.null(cfg$secret)) {
-    return(list(ok = FALSE, message = "Stripe no configurado."))
-  }
+  if (is.null(cfg$secret)) return(list(ok = FALSE, message = "Stripe no configurado."))
+
   customer <- user_row$stripe_customer_id[[1]]
-  if (!.nz(customer)) {
-    return(list(ok = FALSE, message = "No hay cliente Stripe enlazado."))
-  }
+  if (!.nz(customer)) return(list(ok = FALSE, message = "No hay cliente Stripe enlazado."))
 
   res <- try(httr::POST(
     url = "https://api.stripe.com/v1/billing_portal/sessions",
@@ -548,12 +504,11 @@ auth_renew_now <- function(user_row) {
     body = list(customer = customer, return_url = cfg$app_base_url),
     encode = "form"
   ), silent = TRUE)
+
   if (inherits(res, "try-error") || !(httr::status_code(res) %in% 200:299)) {
     return(list(ok = FALSE, message = "No se pudo crear la sesión del portal."))
   }
   js <- try(httr::content(res, as = "parsed", type = "application/json"), silent = TRUE)
-  if (is.null(js$url)) {
-    return(list(ok = FALSE, message = "Stripe no devolvió URL de portal."))
-  }
+  if (is.null(js$url)) return(list(ok = FALSE, message = "Stripe no devolvió URL de portal."))
   list(ok = TRUE, url = js$url)
 }
