@@ -1,7 +1,0 @@
-pandas
-numpy
-requests
-lxml
-openpyxl
-xlsxwriter
-pyinstaller
