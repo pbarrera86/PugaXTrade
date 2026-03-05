@@ -1,0 +1,53 @@
+# ── PugaX Trade — docker-compose.yml ─────────────────────────────────────────
+# Compatible con Dokploy (Docker Compose deployment).
+# Las variables de entorno sensibles se configuran en el panel de Dokploy
+# (Environment Variables) y NO deben estar escritas aquí en producción.
+
+services:
+  pugaxtrade:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pugaxtrade:latest
+    container_name: pugaxtrade_app
+    restart: unless-stopped
+
+    # ── Puerto: Dokploy enruta su proxy inverso (Traefik/Caddy) a este puerto ──
+    ports:
+      - "3838:3838"
+
+    # ── Variables de entorno ──────────────────────────────────────────────────
+    # Configúralas directamente en Dokploy → Environment Variables.
+    # Las que se listan aquí son SÓLO como referencia de qué valores necesitas.
+    environment:
+      # Base de datos Neon (elige UNA de las dos formas):
+      DATABASE_URL: ${DATABASE_URL}          # postgres://user:pass@host/db?sslmode=require
+      # — o variables individuales —
+      # PGHOST:     ${PGHOST}
+      # PGPORT:     ${PGPORT:-5432}
+      # PGDATABASE: ${PGDATABASE}
+      # PGUSER:     ${PGUSER}
+      # PGPASSWORD: ${PGPASSWORD}
+
+      # URL pública de la app (con barra final)
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://apps.pugainversor.com/pugaxtrade/}
+
+      # Stripe
+      STRIPE_SECRET_KEY:       ${STRIPE_SECRET_KEY}
+      STRIPE_PUBLISHABLE_KEY:  ${STRIPE_PUBLISHABLE_KEY}
+      STRIPE_PRICE_ID:         ${STRIPE_PRICE_ID}
+
+    # ── Volumen para logs de Shiny Server ────────────────────────────────────
+    volumes:
+      - shiny_logs:/var/log/shiny-server
+
+    # ── Health check básico ──────────────────────────────────────────────────
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3838/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  shiny_logs:
