@@ -58,7 +58,11 @@ RUN chown -R shiny:shiny /srv/shiny-server \
     && chown root:root /etc/shiny-server/shiny-server.conf \
     && chmod 644 /etc/shiny-server/shiny-server.conf
 
+# ── Preparar entrypoint para variables de entorno ─────────────────────────────
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # ── Puerto Shiny Server ────────────────────────────────────────────────────────
 EXPOSE 3838
 
-CMD ["/usr/bin/shiny-server"]
+CMD ["/usr/local/bin/entrypoint.sh"]
