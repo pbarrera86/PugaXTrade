@@ -24,16 +24,25 @@ thematic_shiny(font = "auto")
 # ----------------- PARALLEL SETUP (Windows optimization) -----------------
 library(future)
 library(furrr)
-n_cores <- max(2, parallel::detectCores(logical = FALSE) - 1)
+# En contenedores (Railway/Docker), detectCores() puede detectar cores del host
+# y lanzar excepciones OOM al crear demasiados workers. Limitamos a 2.
+n_cores <- 2
 plan(multisession, workers = n_cores)
 
 # ----------------- Cargar .Renviron del proyecto y del usuario -----------------
-proj_env <- file.path(getwd(), ".Renviron")
-if (file.exists(proj_env)) readRenviron(proj_env)
-user_env <- file.path(path.expand("~"), ".Renviron")
-if (file.exists(user_env)) readRenviron(user_env)
-shiny_user_env <- "/home/shiny/.Renviron"
-if (file.exists(shiny_user_env)) readRenviron(shiny_user_env)
+tryCatch(
+  {
+    proj_env <- file.path(getwd(), ".Renviron")
+    if (file.exists(proj_env)) readRenviron(proj_env)
+    user_env <- file.path(path.expand("~"), ".Renviron")
+    if (file.exists(user_env)) readRenviron(user_env)
+    shiny_user_env <- "/home/shiny/.Renviron"
+    if (file.exists(shiny_user_env)) readRenviron(shiny_user_env)
+  },
+  error = function(e) {
+    message("Warning: Error al cargar .Renviron: ", e$message)
+  }
+)
 
 # --------- PARCHE DE COMPATIBILIDAD (PUBLIC -> PUBLISHABLE) + DIAGNÓSTICO -------
 if (!nzchar(Sys.getenv("STRIPE_PUBLISHABLE_KEY")) && nzchar(Sys.getenv("STRIPE_PUBLIC_KEY"))) {
