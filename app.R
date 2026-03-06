@@ -1,4 +1,4 @@
-# app.R — PugaX Trade (Neon/Postgres + pool) — Versión estable
+# app.R — PugaX Trade (Neon/Postgres + pool) — Versión estable (con fixes de duplicados)
 suppressWarnings({
   library(shiny)
   library(shinyWidgets)
@@ -18,14 +18,12 @@ suppressWarnings({
   library(pool)
 })
 
-
 # Enable thematic for auto-theming plots
 thematic_shiny(font = "auto")
 
 # ----------------- PARALLEL SETUP (Windows optimization) -----------------
 library(future)
 library(furrr)
-# Use available cores - 1, or at least 2
 n_cores <- max(2, parallel::detectCores(logical = FALSE) - 1)
 plan(multisession, workers = n_cores)
 
@@ -36,11 +34,9 @@ user_env <- file.path(path.expand("~"), ".Renviron")
 if (file.exists(user_env)) readRenviron(user_env)
 
 # --------- PARCHE DE COMPATIBILIDAD (PUBLIC -> PUBLISHABLE) + DIAGNÓSTICO -------
-# Si alguien definió STRIPE_PUBLIC_KEY, mapea a STRIPE_PUBLISHABLE_KEY.
 if (!nzchar(Sys.getenv("STRIPE_PUBLISHABLE_KEY")) && nzchar(Sys.getenv("STRIPE_PUBLIC_KEY"))) {
   Sys.setenv(STRIPE_PUBLISHABLE_KEY = Sys.getenv("STRIPE_PUBLIC_KEY"))
 }
-# Diagnóstico (aparece en la consola/Logs de shiny)
 local({
   keys <- c("PUBLIC_BASE_URL", "STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_PRICE_ID")
   vals <- Sys.getenv(keys, NA_character_)
@@ -51,7 +47,6 @@ local({
 
 # ----------------- Constantes públicas -----------------
 PUBLIC_BASE_URL <- Sys.getenv("PUBLIC_BASE_URL", "https://apps.pugainversor.com/pugaxtrade/")
-# Ensure it is set in the environment for helpers (e.g. auth_helpers.R) to see it
 Sys.setenv(PUBLIC_BASE_URL = PUBLIC_BASE_URL)
 
 # ----------------- THEME -----------------
@@ -93,15 +88,10 @@ ui_head <- tags$head(
     // Idle Timer Logic
     var idleTime = 0;
     $(document).ready(function () {
-        // Increment idle counter every minute
         var idleInterval = setInterval(timerIncrement, 60000);
-
-        // Reset idle on interaction
         $(document).on('mousemove keypress click scroll touchstart', function() {
              idleTime = 0;
         });
-
-        // Listen for reset from Server
         Shiny.addCustomMessageHandler('reset_idle', function(msg) {
             idleTime = 0;
         });
@@ -110,11 +100,9 @@ ui_head <- tags$head(
     function timerIncrement() {
         if (!window.Shiny) return;
         idleTime = idleTime + 1;
-        // 30 minutes warning
         if (idleTime == 30) {
              Shiny.setInputValue('idle_warning', Math.random());
         }
-        // 31 minutes auto-logout
         if (idleTime >= 31) {
              Shiny.setInputValue('idle_timeout', Math.random());
         }
@@ -128,12 +116,10 @@ ui_head <- tags$head(
     });
   ")),
   tags$style(HTML("
-    /* Custom tweaks on top of bslib */
     :root { --shadow-1: 0 6px 18px rgba(0,0,0,.3); }
     .topbar { background: var(--bs-card-bg); border-bottom: 1px solid var(--bs-border-color); box-shadow: var(--shadow-1); padding: 10px 0; margin-bottom: 20px; }
     .card { box-shadow: var(--shadow-1); border: 1px solid var(--bs-border-color) !important; }
 
-    /* Modern gradients for specific buttons only if desired, otherwise let theme handle it */
     .btn-primary { background: linear-gradient(180deg, #0f8bff 0%, #0071e3 100%) !important; border: none !important; }
     .btn-success { background: linear-gradient(180deg, #4be070 0%, #34c759 100%) !important; border: none !important; color: #fff !important; }
     .btn-warning { background: linear-gradient(180deg, #ffcc66 0%, #ff9f0a 100%) !important; border: none !important; color: #1d1d1f !important; font-weight: 700 !important; }
@@ -145,7 +131,6 @@ ui_head <- tags$head(
       box-shadow: 0 0 10px rgba(0, 113, 227, 0.3) inset;
     }
 
-    /* FIX MOBILE IPHONE: Remove double-tap delay and hover stuck issues */
     .btn, .action-button {
       touch-action: manipulation !important;
       cursor: pointer;
@@ -160,7 +145,6 @@ ui_head <- tags$head(
     .table-scroll-x { overflow-x: auto }
     div.dataTables_scrollBody>table { width: 100%!important }
 
-    /* Datatables dark mode tweaks */
     table.dataTable tbody tr { background-color: transparent !important; }
     table.dataTable thead th { background-color: var(--bs-body-bg); color: var(--bs-body-color); border-bottom: 1px solid var(--bs-border-color); }
     .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter, .dataTables_wrapper .dataTables_info, .dataTables_wrapper .dataTables_processing, .dataTables_wrapper .dataTables_paginate {
@@ -180,14 +164,10 @@ ui_head <- tags$head(
 
 # ----------------- Helpers cortos -----------------
 nzchar2 <- function(x) {
-  if (is.null(x) || length(x) == 0) {
-    return(FALSE)
-  }
+  if (is.null(x) || length(x) == 0) return(FALSE)
   isTRUE(nzchar(x[[1]]))
 }
-val_or_empty <- function(x) {
-  if (is.null(x) || length(x) == 0) "" else x
-}
+val_or_empty <- function(x) if (is.null(x) || length(x) == 0) "" else x
 `%||%` <- function(a, b) {
   if (!is.null(a) && length(a) > 0 && !is.na(a)[1] && nzchar(as.character(a[[1]]))) a else b
 }
@@ -211,20 +191,15 @@ show_md_modal <- function(title, md_path, footer = NULL) {
 
   showModal(modalDialog(
     title = title, size = "l", easyClose = TRUE,
-    div(
-      style = "max-height:65vh; overflow:auto; padding-right:6px;",
-      content
-    ),
+    div(style = "max-height:65vh; overflow:auto; padding-right:6px;", content),
     footer = footer %||% modalButton("Cerrar")
   ))
 }
 
-
 # ----------------- Núcleo y Auth/DB -----------------
-source("R/finance_core.R", encoding = "UTF-8") # ANÁLISIS + Excel
-source("R/db.R", encoding = "UTF-8") # pool + helpers Postgres
-# auth_helpers.R puede no estar; mantenemos source protegido:
-# auth_helpers.R puede no estar; mostramos error si falla algo que no sea "file not found"
+source("R/finance_core.R", encoding = "UTF-8")
+source("R/db.R", encoding = "UTF-8")
+
 tryCatch(source("R/auth_helpers.R", encoding = "UTF-8"), error = function(e) {
   message("Warning: Could not source R/auth_helpers.R: ", e$message)
 })
@@ -235,83 +210,56 @@ stripe_has_env <- function() {
 }
 stripe_mode_from_key <- function() {
   sk <- Sys.getenv("STRIPE_SECRET_KEY", "")
-  if (!nzchar(sk)) {
-    return(NA_character_)
-  }
-  if (startsWith(sk, "sk_test_")) {
-    return("test")
-  }
-  if (startsWith(sk, "sk_live_")) {
-    return("live")
-  }
+  if (!nzchar(sk)) return(NA_character_)
+  if (startsWith(sk, "sk_test_")) return("test")
+  if (startsWith(sk, "sk_live_")) return("live")
   NA_character_
 }
 stripe_error_msg <- function(resp) {
-  if (inherits(resp, "try-error")) {
-    return("No se pudo contactar Stripe.")
-  }
+  if (inherits(resp, "try-error")) return("No se pudo contactar Stripe.")
   js <- try(httr::content(resp, as = "parsed", type = "application/json"), silent = TRUE)
-  if (is.list(js) && !is.null(js$error$message)) {
-    return(js$error$message)
-  }
-  if (httr::status_code(resp) >= 400) {
-    return(paste("HTTP", httr::status_code(resp)))
-  }
+  if (is.list(js) && !is.null(js$error$message)) return(js$error$message)
+  if (httr::status_code(resp) >= 400) return(paste("HTTP", httr::status_code(resp)))
   "Respuesta inválida de Stripe."
 }
 stripe_validate_price_exists <- function(price_id) {
   secret <- Sys.getenv("STRIPE_SECRET_KEY", "")
-  if (!nzchar(secret) || !nzchar(price_id)) {
-    return(list(ok = FALSE, message = "Faltan claves o PRICE."))
-  }
+  if (!nzchar(secret) || !nzchar(price_id)) return(list(ok = FALSE, message = "Faltan claves o PRICE."))
   r <- try(httr::GET(
     paste0("https://api.stripe.com/v1/prices/", price_id),
     httr::add_headers(Authorization = paste("Bearer", secret))
   ), silent = TRUE)
-  if (inherits(r, "try-error")) {
-    return(list(ok = FALSE, message = "No se pudo contactar Stripe (price)."))
-  }
-  if (httr::status_code(r) == 200) {
-    return(list(ok = TRUE))
-  }
+  if (inherits(r, "try-error")) return(list(ok = FALSE, message = "No se pudo contactar Stripe (price)."))
+  if (httr::status_code(r) == 200) return(list(ok = TRUE))
   list(ok = FALSE, message = stripe_error_msg(r))
 }
 stripe_validate_customer_exists <- function(customer_id) {
   secret <- Sys.getenv("STRIPE_SECRET_KEY", "")
-  if (!nzchar(secret) || !nzchar(customer_id)) {
-    return(list(ok = FALSE, message = "Falta customer o clave."))
-  }
+  if (!nzchar(secret) || !nzchar(customer_id)) return(list(ok = FALSE, message = "Falta customer o clave."))
   r <- try(httr::GET(
     paste0("https://api.stripe.com/v1/customers/", customer_id),
     httr::add_headers(Authorization = paste("Bearer", secret))
   ), silent = TRUE)
-  if (inherits(r, "try-error")) {
-    return(list(ok = FALSE, message = "No se pudo contactar Stripe (customer)."))
-  }
-  if (httr::status_code(r) == 200) {
-    return(list(ok = TRUE))
-  }
+  if (inherits(r, "try-error")) return(list(ok = FALSE, message = "No se pudo contactar Stripe (customer)."))
+  if (httr::status_code(r) == 200) return(list(ok = TRUE))
   list(ok = FALSE, message = stripe_error_msg(r))
 }
 
-# === (Parche 1) Obtener sesión y guardar IDs en DB ===
+# === Obtener sesión y guardar IDs (customer/subscription) ===
 stripe_get_session_info <- function(session_id) {
   secret <- Sys.getenv("STRIPE_SECRET_KEY", "")
-  if (!nzchar(secret) || !nzchar(session_id)) {
-    return(NULL)
-  }
+  if (!nzchar(secret) || !nzchar(session_id)) return(NULL)
+
   url <- paste0(
     "https://api.stripe.com/v1/checkout/sessions/", session_id,
     "?expand[]=customer&expand[]=subscription"
   )
   r <- try(httr::GET(url, httr::add_headers(Authorization = paste("Bearer", secret))), silent = TRUE)
-  if (inherits(r, "try-error") || httr::status_code(r) != 200) {
-    return(NULL)
-  }
+  if (inherits(r, "try-error") || httr::status_code(r) != 200) return(NULL)
+
   js <- try(httr::content(r, as = "parsed", type = "application/json"), silent = TRUE)
-  if (inherits(js, "try-error") || is.null(js)) {
-    return(NULL)
-  }
+  if (inherits(js, "try-error") || is.null(js)) return(NULL)
+
   out <- list(customer_id = NA_character_, subscription_id = NA_character_)
   if (!is.null(js$customer)) {
     if (is.list(js$customer) && !is.null(js$customer$id)) out$customer_id <- js$customer$id
@@ -324,35 +272,9 @@ stripe_get_session_info <- function(session_id) {
   out
 }
 
-db_update_user_stripe_ids <- function(user_id, customer_id = NA_character_, subscription_id = NA_character_) {
-  con <- NULL
-  ok <- FALSE
-  try(
-    {
-      con <- pool_init()
-      on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
-      DBI::dbExecute(con, "
-      update users
-         set stripe_customer_id = coalesce($2, stripe_customer_id),
-             stripe_subscription_id = coalesce($3, stripe_subscription_id)
-       where id = $1
-    ", params = list(
-        user_id,
-        if (is.character(customer_id) && nzchar(customer_id)) customer_id else NULL,
-        if (is.character(subscription_id) && nzchar(subscription_id)) subscription_id else NULL
-      ))
-      ok <- TRUE
-    },
-    silent = TRUE
-  )
-  ok
-}
-
 # --------- Checkout (con validación de PRICE y mensajes claros) ----------
 stripe_checkout_fallback <- function(user_row) {
-  if (!stripe_has_env()) {
-    return(list(ok = FALSE, message = "Stripe no configurado."))
-  }
+  if (!stripe_has_env()) return(list(ok = FALSE, message = "Stripe no configurado."))
 
   price <- Sys.getenv("STRIPE_PRICE_ID")
   chk <- stripe_validate_price_exists(price)
@@ -369,7 +291,6 @@ stripe_checkout_fallback <- function(user_row) {
 
   secret <- Sys.getenv("STRIPE_SECRET_KEY")
   email <- user_row$email[[1]]
-  # IMPORTANTE: incluimos session_id para validación al volver
   success_url <- paste0(PUBLIC_BASE_URL, "?paid=1&session_id={CHECKOUT_SESSION_ID}")
   cancel_url <- paste0(PUBLIC_BASE_URL, "?paid=0")
 
@@ -390,24 +311,18 @@ stripe_checkout_fallback <- function(user_row) {
     encode = "form"
   ), silent = TRUE)
 
-  if (inherits(req, "try-error")) {
-    return(list(ok = FALSE, message = "No se pudo contactar Stripe (checkout)."))
-  }
+  if (inherits(req, "try-error")) return(list(ok = FALSE, message = "No se pudo contactar Stripe (checkout)."))
 
   js <- try(httr::content(req, as = "parsed", type = "application/json"), silent = TRUE)
-  if (is.null(js$id) || is.null(js$url)) {
-    return(list(ok = FALSE, message = stripe_error_msg(req)))
-  }
+  if (is.null(js$id) || is.null(js$url)) return(list(ok = FALSE, message = stripe_error_msg(req)))
   list(ok = TRUE, url = js$url, session_id = js$id)
 }
 
 # --------- Portal (con validación de CUSTOMER y mensajes claros) ----------
 stripe_portal_fallback <- function(user_row) {
-  if (!stripe_has_env()) {
-    return(list(ok = FALSE, message = "Stripe no configurado."))
-  }
-  customer <- user_row$stripe_customer_id[[1]]
+  if (!stripe_has_env()) return(list(ok = FALSE, message = "Stripe no configurado."))
 
+  customer <- user_row$stripe_customer_id[[1]]
   if (is.na(customer) || !nzchar(customer)) {
     return(list(ok = FALSE, message = "Aún no tienes un cliente Stripe enlazado en este modo. Realiza un pago primero."))
   }
@@ -432,20 +347,14 @@ stripe_portal_fallback <- function(user_row) {
     encode = "form"
   ), silent = TRUE)
 
-  if (inherits(req, "try-error")) {
-    return(list(ok = FALSE, message = "No se pudo abrir el portal (red)."))
-  }
+  if (inherits(req, "try-error")) return(list(ok = FALSE, message = "No se pudo abrir el portal (red)."))
   js <- try(httr::content(req, as = "parsed", type = "application/json"), silent = TRUE)
-  if (is.null(js$url)) {
-    return(list(ok = FALSE, message = stripe_error_msg(req)))
-  }
+  if (is.null(js$url)) return(list(ok = FALSE, message = stripe_error_msg(req)))
   list(ok = TRUE, url = js$url)
 }
 
 stripe_set_cancel_at_period_end <- function(sub_id, flag) {
-  if (!stripe_has_env()) {
-    return(FALSE)
-  }
+  if (!stripe_has_env()) return(FALSE)
   secret <- Sys.getenv("STRIPE_SECRET_KEY")
   req <- try(httr::POST(
     url = paste0("https://api.stripe.com/v1/subscriptions/", sub_id),
@@ -453,9 +362,7 @@ stripe_set_cancel_at_period_end <- function(sub_id, flag) {
     body = list(cancel_at_period_end = tolower(as.character(flag))),
     encode = "form"
   ), silent = TRUE)
-  if (inherits(req, "try-error")) {
-    return(FALSE)
-  }
+  if (inherits(req, "try-error")) return(FALSE)
   st <- try(httr::content(req, as = "parsed", type = "application/json"), silent = TRUE)
   !is.null(st$id)
 }
@@ -471,14 +378,10 @@ section_analysis_ui <- function(ns, locked = FALSE, days_left = NULL) {
         span(sprintf("Días restantes de prueba: %d.", as.integer(days_left)))
       },
       tags$br(),
-      "Activa tu plan anual en la pestaña ",
-      tags$b("Membresía"),
-      "."
+      "Activa tu plan anual en la pestaña ", tags$b("Membresía"), "."
     )
-  } else {
-    NULL
-  }
-  # Controles (deshabilitados si locked)
+  } else NULL
+
   ta <- textAreaInput(ns("tickers"), NULL, default_tickers_text(), rows = 5, width = "100%")
   bt_reset <- actionButton(ns("reset_tickers"), "Restaurar Lista", class = "btn btn-info btn-xs mb-2", style = "margin-top:-10px; margin-bottom:10px;")
   bt_run <- actionButton(ns("run"), tagList(icon("play"), "Iniciar análisis"), class = "btn btn-success w-100 mb-2")
@@ -490,6 +393,7 @@ section_analysis_ui <- function(ns, locked = FALSE, days_left = NULL) {
     bt_run <- shinyjs::disabled(bt_run)
     bt_xls <- shinyjs::disabled(bt_xls)
   }
+
   tagList(
     div(
       class = "section",
@@ -699,9 +603,8 @@ reset_panel <- function(id, token = "") {
 auth_module <- function(id, set_view, on_success) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    subview <- reactiveVal("login") # login | register | reset_req
+    subview <- reactiveVal("login")
 
-    # REFERRAL LOGIC
     referred_by_id <- reactiveVal(NULL)
     observe({
       q <- parseQueryString(session$clientData$url_search)
@@ -718,24 +621,12 @@ auth_module <- function(id, set_view, on_success) {
     output$reset_msg <- renderUI(NULL)
     output$reset_req_msg <- renderUI(NULL)
 
-    observeEvent(input$go_login, {
-      subview("login")
-    })
-    observeEvent(input$go_register, {
-      subview("register")
-    })
-    observeEvent(input$go_reset, {
-      subview("reset_req")
-    })
-    observeEvent(input$show_register, {
-      subview("register")
-    })
-    observeEvent(input$show_reset_request, {
-      subview("reset_req")
-    })
-    observeEvent(input$show_login, {
-      subview("login")
-    })
+    observeEvent(input$go_login, { subview("login") })
+    observeEvent(input$go_register, { subview("register") })
+    observeEvent(input$go_reset, { subview("reset_req") })
+    observeEvent(input$show_register, { subview("register") })
+    observeEvent(input$show_reset_request, { subview("reset_req") })
+    observeEvent(input$show_login, { subview("login") })
 
     output$auth_view <- renderUI({
       switch(subview(),
@@ -755,7 +646,6 @@ auth_module <- function(id, set_view, on_success) {
           textInput(ns("reg_phone"), "Teléfono (opcional)", width = "100%"),
           passwordInput(ns("reg_pass1"), "Contraseña", width = "100%"),
           passwordInput(ns("reg_pass2"), "Confirmar contraseña", width = "100%"),
-          # ====== CASILLA + ENLACES (actionLink) ======
           fluidRow(
             column(
               12,
@@ -781,7 +671,6 @@ auth_module <- function(id, set_view, on_success) {
       )
     })
 
-    # ----- Abrir modales desde los enlaces (TOS/Privacy) -----
     observeEvent(input$a_terms, {
       show_md_modal(
         "Términos y Condiciones",
@@ -822,7 +711,6 @@ auth_module <- function(id, set_view, on_success) {
             return()
           }
           tok <- db_issue_session_token(res$user$id[[1]], days = 7)
-          # Session cookie: days = NULL/0
           session$sendCustomMessage("setCookie", list(name = "puga_auth", value = tok, days = 0))
           session$userData$session_token(tok)
           showNotification(paste0("Bienvenido, ", res$user$name, "!"), type = "message", duration = 4)
@@ -835,11 +723,9 @@ auth_module <- function(id, set_view, on_success) {
       )
     })
 
-    # VERIFICATION LOGIC
     observe({
       q <- parseQueryString(session$clientData$url_search)
       if (!is.null(q$verify) && nzchar(q$verify)) {
-        # Verify token
         ok <- try(db_verify_email(q$verify), silent = TRUE)
         if (isTRUE(ok)) {
           showModal(modalDialog(
@@ -858,10 +744,11 @@ auth_module <- function(id, set_view, on_success) {
     observeEvent(input$btn_do_register, {
       shinyjs::disable("btn_do_register")
       on.exit(shinyjs::enable("btn_do_register"), add = TRUE)
+
       email <- trimws(input$reg_email)
       name <- trimws(input$reg_name)
       user <- trimws(input$reg_username)
-      # Strict Regex for Email
+
       email_regex <- "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
       if (!nzchar2(email) || !grepl(email_regex, email)) {
         output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Correo inválido. Por favor usa un correo real."))
@@ -899,13 +786,9 @@ auth_module <- function(id, set_view, on_success) {
         return()
       }
 
-      # Password already set in db_register_user
       try(
         {
-          # DEBUG: Admin email re-enabled with safety checks
           if (exists("auth_notify_admin_new_user")) auth_notify_admin_new_user(res$user, plain_password = pass1)
-
-          # Send VERIFICATION email instead of welcome credentials
           if (exists("auth_send_verification_email")) auth_send_verification_email(res$user, token = res$user$verification_token[[1]])
         },
         silent = FALSE
@@ -956,44 +839,27 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     section <- reactiveVal("analysis")
-
-    # Trigger manual para tabla usuarios
     users_trigger <- reactiveVal(0)
 
-    # ----------------- ExtendedTask para Análisis No Bloqueante -----------------
-    # Definimos la tarea fuera de los observers para que persista en la sesión.
-    # Esta tarea corre en un worker de 'future' y no bloquea el hilo principal.
     analysis_task <- ExtendedTask$new(function(ticks) {
       run_pipeline(tickers = ticks)
     })
 
-    # ---- Estado de acceso al análisis (prueba vs membresía) ----
     can_analyze <- reactive({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(FALSE)
-      }
-      if (!is.null(u$username) && u$username[[1]] == "pedrobp86") {
-        return(TRUE)
-      }
-      if (db_is_admin(u)) {
-        return(TRUE)
-      }
-      if (db_membership_is_active(u)) {
-        return(TRUE)
-      }
+      if (is.null(u)) return(FALSE)
+      if (!is.null(u$username) && u$username[[1]] == "pedrobp86") return(TRUE)
+      if (db_is_admin(u)) return(TRUE)
+      if (db_membership_is_active(u)) return(TRUE)
       left <- suppressWarnings(as.numeric(db_trial_days_left(u)[1]))
       isTRUE(!is.na(left) && left >= 0)
     })
     trial_left <- reactive({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NA_real_)
-      }
+      if (is.null(u)) return(NA_real_)
       suppressWarnings(as.numeric(db_trial_days_left(u)[1]))
     })
 
-    # ---- Nav + active styles ----
     mark_active <- function(which) {
       ids <- c("nav_analysis", "nav_account", "nav_membership", "nav_admin", "nav_referral")
       for (i in ids) shinyjs::removeClass(id = ns(i), class = "btn-nav-active")
@@ -1018,39 +884,21 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         mark_active("nav_analysis")
       }
     })
-    observeEvent(input$nav_account, {
-      section("account")
-      mark_active("nav_account")
-    })
-    observeEvent(input$nav_membership, {
-      section("membership")
-      mark_active("nav_membership")
-    })
-    observeEvent(input$nav_admin, {
-      section("admin")
-      mark_active("nav_admin")
-    })
-    observeEvent(input$nav_referral, {
-      section("referral")
-      mark_active("nav_referral")
-    })
+    observeEvent(input$nav_account, { section("account"); mark_active("nav_account") })
+    observeEvent(input$nav_membership, { section("membership"); mark_active("nav_membership") })
+    observeEvent(input$nav_admin, { section("admin"); mark_active("nav_admin") })
+    observeEvent(input$nav_referral, { section("referral"); mark_active("nav_referral") })
 
     output$hello_user <- renderUI({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
+      if (is.null(u)) return(NULL)
       span(sprintf("Hola, %s", u$name[[1]]))
     })
     output$admin_btn <- renderUI({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
+      if (is.null(u)) return(NULL)
       is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
-      if (!is_super && !db_is_admin(u)) {
-        return(NULL)
-      }
+      if (!is_super && !db_is_admin(u)) return(NULL)
       actionButton(ns("nav_admin"), "Usuarios", class = "btn btn-primary btn-sm w-100-sm")
     })
 
@@ -1065,10 +913,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     })
 
     # ----------------- Referral Logic -----------------
-    # ----------------- Referral Logic -----------------
     observe({
-      # Populate Referral Link box if code exists
-      req(section() == "referral") # Rerun when tab opens
+      req(section() == "referral")
       u <- user_reactive()
       if (!is.null(u)) {
         code <- if (!is.null(u$referral_code)) u$referral_code[[1]] else NA_character_
@@ -1085,11 +931,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$ref_gen_btn, {
       u <- user_reactive()
-      if (is.null(u)) {
-        return()
-      }
+      if (is.null(u)) return()
 
-      # Double check if code already exists
       code <- if (!is.null(u$referral_code)) u$referral_code[[1]] else NA_character_
       if (!is.null(code) && !is.na(code) && nzchar(code)) {
         showNotification("Ya tienes un enlace de referido generado.", type = "warning")
@@ -1097,17 +940,12 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         return()
       }
 
-      # Generate
       tryCatch(
         {
           db_ensure_referral_code(u$id[[1]])
           showNotification("¡Enlace generado exitosamente!", type = "message")
-
-          # Refresh user data
           u_new <- db_get_user_by_id(u$id[[1]])
           session$userData$current_user(u_new)
-
-          # UI update handled by the observer above
         },
         error = function(e) {
           showNotification("Error al generar enlace. Inténtalo de nuevo.", type = "error")
@@ -1117,9 +955,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     output$wallet_balance <- renderText({
       u <- user_reactive()
-      if (is.null(u)) {
-        return("$0.00")
-      }
+      if (is.null(u)) return("$0.00")
       bal <- u$referral_wallet[[1]]
       if (is.null(bal) || is.na(bal)) bal <- 0.0
       sprintf("$%.2f", as.numeric(bal))
@@ -1127,32 +963,22 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     output$referrals_tbl <- renderDT({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
+      if (is.null(u)) return(NULL)
       df <- db_get_referred_users(u$id[[1]])
-      if (nrow(df) == 0) {
-        return(NULL)
-      }
+      if (nrow(df) == 0) return(NULL)
       DT::datatable(df, options = list(pageLength = 5, lengthChange = FALSE, searching = FALSE))
     })
 
-    # (Parche 3) Deshabilitar "Renovar ahora" si no hay customer en este modo
     observe({
       u <- user_reactive()
-      if (is.null(u)) {
-        return()
-      }
+      if (is.null(u)) return()
       has_customer <- !is.null(u$stripe_customer_id) && nzchar(u$stripe_customer_id[[1]])
       if (has_customer) shinyjs::enable(ns("mb_renew_now")) else shinyjs::disable(ns("mb_renew_now"))
     })
 
-    # ----------------- Rellenar "Tus datos" -----------------
     output$account_data <- renderUI({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
+      if (is.null(u)) return(NULL)
       tags$ul(
         tags$li(strong("Usuario: "), u$username[[1]]),
         tags$li(strong("Nombre: "), u$name[[1]]),
@@ -1165,15 +991,12 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     # ----------------- Change Password Logic -----------------
     observeEvent(input$acc_save_pass, {
       u <- user_reactive()
-      if (is.null(u)) {
-        return()
-      }
+      if (is.null(u)) return()
 
       old_p <- input$acc_old
       new_p1 <- input$acc_new1
       new_p2 <- input$acc_new2
 
-      # 1. Validaciones básicas
       if (!nzchar(old_p) || !nzchar(new_p1) || !nzchar(new_p2)) {
         showNotification("Completa todos los campos de contraseña.", type = "warning")
         return()
@@ -1182,26 +1005,21 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         showNotification("Las nuevas contraseñas no coinciden.", type = "error")
         return()
       }
-
-      # 2. Nueva == Anterior (Requisito usuario)
       if (new_p1 == old_p) {
         showNotification("La nueva contraseña no puede ser igual a la anterior. Intenta agregar símbolos o números (ej: Puga#2025!).", type = "error", duration = 8)
         return()
       }
 
-      # 3. Validar contraseña actual (usando db_login como helper)
       chk <- db_login(u$username[[1]], old_p)
       if (!isTRUE(chk$ok)) {
         showNotification("La contraseña actual es incorrecta.", type = "error")
         return()
       }
 
-      # 4. Guardar
       tryCatch(
         {
           db_set_password(u$username[[1]], new_p1)
 
-          # Send Email Notification
           if (exists("auth_send_generic_email")) {
             subj <- "Contrasena Actualizada - PugaX Trade"
             body <- paste0(
@@ -1214,7 +1032,6 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
             try(auth_send_generic_email(u$email[[1]], subj, body), silent = TRUE)
           }
 
-          # Notify Admin of password change
           if (exists("auth_notify_admin_password_change")) {
             try(auth_notify_admin_password_change(u), silent = TRUE)
           }
@@ -1246,9 +1063,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       req(isTRUE(can_analyze()))
       req(nzchar(input$tickers))
       ticks <- parse_tickers(input$tickers)
-      if (length(ticks) == 0) {
-        return()
-      }
+      if (length(ticks) == 0) return()
 
       if (length(ticks) > 550) {
         showNotification("Máximo 550 tickers permitidos para evitar timeouts.", type = "warning")
@@ -1257,14 +1072,10 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
       output$pb_label <- renderText("Iniciando tarea...")
       updateProgressBar(session, "pb", 5)
-
-      # Invocamos la tarea asíncrona
       analysis_task$invoke(ticks)
     })
 
-    # Renderizado de tabla basado en el RESULTADO de la tarea
     output$summary_tbl <- DT::renderDT({
-      # Solo intentamos renderizar si la tarea fue exitosa
       req(analysis_task$status() == "success")
       res <- analysis_task$result()
       df <- res$summary
@@ -1273,31 +1084,27 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         return(DT::datatable(data.frame(), options = list(scrollX = TRUE)))
       }
 
-      # Heartbeat / Update UI state
       output$pb_label <- renderText("Completado")
       updateProgressBar(session, "pb", 100)
 
-      if ("Rank" %in% names(df)) {
-        df <- df[order(df$Rank), , drop = FALSE]
-      }
+      if ("Rank" %in% names(df)) df <- df[order(df$Rank), , drop = FALSE]
 
       heat_cols <- c(
-        "Rank", "Puntaje (0-100)", "Analistas %", "Crecimiento %",
-        "Salud %", "Rentabilidad %", "Sentimiento %", "Técnica %", "Valoración %",
-        "Target(Price-1 %)", "SemaforoScore"
+        "Rank", "Puntaje (0-100)", "Analistas %", "Crecimiento %", "Salud %", "Rentabilidad %", "Sentimiento %",
+        "Técnica %", "Valoración %", "Target(Price-1 %)", "SemaforoScore"
       )
       heat_cols <- intersect(heat_cols, names(df))
+
       dt <- DT::datatable(
         df,
         rownames = FALSE,
         options = list(scrollX = TRUE, pageLength = 10, autoWidth = TRUE),
         escape = FALSE
       )
+
       colourize_diverging <- function(dt_obj, col, vec) {
         v <- suppressWarnings(as.numeric(vec))
-        if (all(is.na(v))) {
-          return(dt_obj)
-        }
+        if (all(is.na(v))) return(dt_obj)
         vmin <- min(v, na.rm = TRUE)
         vmax <- max(v, na.rm = TRUE)
         if (vmin < 0 && vmax > 0) {
@@ -1310,6 +1117,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         cols <- c("#ff6b6b", "#ffd166", "#2ecc71")
         DT::formatStyle(dt_obj, col, backgroundColor = DT::styleInterval(cuts, cols))
       }
+
       if ("Rank" %in% heat_cols) {
         vals <- df$Rank
         mid <- stats::quantile(vals, probs = .5, na.rm = TRUE)
@@ -1323,11 +1131,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       dt
     })
 
-    # Handler de descarga basado en el RESULTADO de la tarea
     output$download_excel <- downloadHandler(
-      filename = function() {
-        paste0("PugaX_Analisis_", format(Sys.time(), "%Y%m%d_%H%M"), ".xlsx")
-      },
+      filename = function() paste0("PugaX_Analisis_", format(Sys.time(), "%Y%m%d_%H%M"), ".xlsx"),
       content = function(file) {
         req(analysis_task$status() == "success")
         res <- analysis_task$result()
@@ -1341,10 +1146,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         title = "Glosario de Indicadores",
         size = "l",
         easyClose = TRUE,
-        div(
-          style = "max-height: 70vh; overflow-y: auto;",
-          DTOutput(ns("glossary_tbl"))
-        ),
+        div(style = "max-height: 70vh; overflow-y: auto;", DTOutput(ns("glossary_tbl"))),
         footer = modalButton("Cerrar")
       ))
     })
@@ -1387,9 +1189,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
       if (exists("auth_create_checkout_session")) {
         res <- try(auth_create_checkout_session(u), silent = TRUE)
-        if (inherits(res, "try-error") || !isTRUE(res$ok)) {
-          res <- stripe_checkout_fallback(u)
-        }
+        if (inherits(res, "try-error") || !isTRUE(res$ok)) res <- stripe_checkout_fallback(u)
       } else {
         res <- stripe_checkout_fallback(u)
       }
@@ -1411,18 +1211,12 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     output$membership_state <- renderUI({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
-      if (!is.null(u$username) && u$username[[1]] == "pedrobp86") {
-        return(div(class = "text-success", "Membresía perpetua (admin)."))
-      }
-      if (db_is_admin(u)) {
-        return(div(class = "text-success", "Eres administrador."))
-      }
+      if (is.null(u)) return(NULL)
+      if (!is.null(u$username) && u$username[[1]] == "pedrobp86") return(div(class = "text-success", "Membresía perpetua (admin)."))
+      if (db_is_admin(u)) return(div(class = "text-success", "Eres administrador."))
+
       if (db_membership_is_active(u)) {
         msg <- "Membresía activa."
-        # Calculate days remaining if expiration exists
         if (!is.null(u$membership_expires_at) && !is.na(u$membership_expires_at[[1]])) {
           exp_date <- tryCatch(as.POSIXct(u$membership_expires_at[[1]]), error = function(e) NA)
           if (!is.na(exp_date)) {
@@ -1433,12 +1227,11 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         }
         return(div(class = "text-success", msg))
       }
+
       left <- db_trial_days_left(u)
       left <- suppressWarnings(as.numeric(left[1]))
       if (!is.na(left)) {
-        if (left < 0) {
-          return(div(class = "text-danger", "Prueba finalizada."))
-        }
+        if (left < 0) return(div(class = "text-danger", "Prueba finalizada."))
         return(div(class = "text-warning", sprintf("Prueba activa: %d días restantes.", as.integer(left))))
       }
       div(class = "text-muted", "Sin membresía.")
@@ -1446,18 +1239,13 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     output$renewal_state <- renderUI({
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
+      if (is.null(u)) return(NULL)
       if (exists("auth_get_subscription_status")) {
         st <- try(auth_get_subscription_status(u), silent = TRUE)
         if (!inherits(st, "try-error") && !is.null(st)) {
           auto <- isTRUE(st$auto_renew[1])
-          if (auto) {
-            return(div(class = "text-success", "Renovación automática: ACTIVA"))
-          } else {
-            return(div(class = "text-danger", "Renovación automática: DESACTIVADA"))
-          }
+          if (auto) return(div(class = "text-success", "Renovación automática: ACTIVA"))
+          return(div(class = "text-danger", "Renovación automática: DESACTIVADA"))
         }
       }
       div(class = "text-muted", "(Sin datos de suscripción)")
@@ -1465,9 +1253,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$mb_cancel_auto, {
       u <- user_reactive()
-      if (is.null(u)) {
-        return()
-      }
+      if (is.null(u)) return()
       done <- FALSE
       if (exists("auth_cancel_auto_renew")) {
         ok <- try(auth_cancel_auto_renew(u), silent = TRUE)
@@ -1485,7 +1271,6 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       }
     })
 
-
     observeEvent(input$reset_tickers, {
       updateTextAreaInput(session, "tickers", value = default_tickers_text())
       showNotification("Lista de tickers restaurada a valores por defecto.", type = "message")
@@ -1493,9 +1278,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$mb_reactivate_auto, {
       u <- user_reactive()
-      if (is.null(u)) {
-        return()
-      }
+      if (is.null(u)) return()
       done <- FALSE
       if (exists("auth_reactivate_auto_renew")) {
         ok <- try(auth_reactivate_auto_renew(u), silent = TRUE)
@@ -1505,9 +1288,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         sub_id <- u$stripe_subscription_id[[1]]
         if (nzchar(sub_id)) done <- isTRUE(stripe_set_cancel_at_period_end(sub_id, FALSE))
       }
-      if (!done) {
-        showNotification("No se pudo reactivar la renovación.", type = "error")
-      } else {
+      if (!done) showNotification("No se pudo reactivar la renovación.", type = "error")
+      else {
         showNotification("Renovación automática reactivada.", type = "message")
         output$renewal_state <- renderUI(output$renewal_state())
       }
@@ -1515,27 +1297,19 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$mb_renew_now, {
       u <- user_reactive()
-      if (is.null(u)) {
-        return()
-      }
+      if (is.null(u)) return()
 
-      # Intento helper (si existe)
       url <- NULL
       if (exists("auth_renew_now")) {
         ok <- try(auth_renew_now(u), silent = TRUE)
-        if (is.list(ok) && isTRUE(ok$ok) && nzchar(ok$url)) {
-          url <- ok$url
-        } else if (inherits(ok, "try-error")) {
-          showNotification("Error al invocar helper renew_now.", type = "error", duration = 6)
-        }
+        if (is.list(ok) && isTRUE(ok$ok) && nzchar(ok$url)) url <- ok$url
+        else if (inherits(ok, "try-error")) showNotification("Error al invocar helper renew_now.", type = "error", duration = 6)
       }
 
-      # Fallback con validación explícita de customer/mode
       if (is.null(url)) {
         res <- stripe_portal_fallback(u)
-        if (isTRUE(res$ok)) {
-          url <- res$url
-        } else {
+        if (isTRUE(res$ok)) url <- res$url
+        else {
           showNotification(res$message, type = "error", duration = 10)
           return()
         }
@@ -1555,15 +1329,12 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     # ----------------- Panel Admin (tabla + CSV) -----------------
     output$users_tbl <- renderDT({
-      users_trigger() # Dependency for manual refresh
+      users_trigger()
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
+      if (is.null(u)) return(NULL)
       is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
-      if (!is_super && !db_is_admin(u)) {
-        return(NULL)
-      }
+      if (!is_super && !db_is_admin(u)) return(NULL)
+
       con <- NULL
       df <- data.frame()
       try(
@@ -1571,17 +1342,16 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
           con <- pool_init()
           on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
           df <- DBI::dbGetQuery(con, "
-          select username, email, name, country, phone, created_at, active,
-                 membership_active, membership_expires_at, trial_expires_at,
-                 stripe_customer_id, stripe_subscription_id,
-                 referral_code, referral_wallet
-          from users order by created_at desc
-        ")
+            select username, email, name, country, phone, created_at, active,
+                   membership_active, membership_expires_at, trial_expires_at,
+                   stripe_customer_id, stripe_subscription_id,
+                   referral_code, referral_wallet
+            from users order by created_at desc
+          ")
         },
         silent = TRUE
       )
 
-      # Calculate Vigencia (Days Remaining)
       if (nrow(df) > 0) {
         now_ts <- Sys.time()
         df$Vigencia <- sapply(seq_len(nrow(df)), function(i) {
@@ -1589,38 +1359,24 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
           mem_exp <- df$membership_expires_at[i]
           tri_exp <- df$trial_expires_at[i]
 
-          # Convert to POSIXct if chars (depende del driver)
-          # PostgreSQL usually returns POSIXct or character
-
-          # Logic:
           if (is_active) {
-            # Active Member
             if (!is.na(mem_exp) && nzchar(as.character(mem_exp))) {
-              # Calculate diff
-              # Handle potential format issues
               exp_date <- tryCatch(as.POSIXct(mem_exp), error = function(e) NA)
               if (!is.na(exp_date)) {
                 days <- difftime(exp_date, now_ts, units = "days")
                 d <- ceiling(as.numeric(days))
-                if (d < 0) {
-                  return(paste0("Vencido (", d, " días)"))
-                }
+                if (d < 0) return(paste0("Vencido (", d, " días)"))
                 return(paste0(d, " días"))
               }
             }
-            # If active but no date (Stripe auto-renew or manual without date)
             return("Activa (Indef/Auto)")
           } else {
-            # Trial / Inactive
             if (!is.na(tri_exp) && nzchar(as.character(tri_exp))) {
-              # Trial format might be Date
               exp_date <- tryCatch(as.POSIXct(tri_exp), error = function(e) NA)
               if (!is.na(exp_date)) {
                 days <- difftime(exp_date, now_ts, units = "days")
                 d <- ceiling(as.numeric(days))
-                if (d < 0) {
-                  return(paste0("Prueba Vencida (", d, " días)"))
-                }
+                if (d < 0) return(paste0("Prueba Vencida (", d, " días)"))
                 return(paste0("Prueba: ", d, " días"))
               }
             }
@@ -1658,19 +1414,14 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     observeEvent(input$adm_confirm_activate, {
       removeModal()
       rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
+      if (is.null(rows)) return()
 
-      u <- user_reactive()
       con <- NULL
-      # Fetch both ID and Email
       user_data <- data.frame(id = integer(), email = character(), username = character())
       try(
         {
           con <- pool_init()
           on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
-          # Same order as renderDT
           user_data <- DBI::dbGetQuery(con, "select id, email, username from users order by created_at desc")
           user_data <- user_data[rows, , drop = FALSE]
         },
@@ -1703,7 +1454,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
                 "Accede aquí: https://apps.pugainversor.com/pugaxtrade/\n\n",
                 "¡Disfruta de PugaX Trade!\n"
               )
-              if (isTRUE(auth_send_generic_email(uemail, subj, body)$ok)) {
+              if (exists("auth_send_generic_email") && isTRUE(auth_send_generic_email(uemail, subj, body)$ok)) {
                 emails_sent <- emails_sent + 1
               }
             }
@@ -1711,7 +1462,6 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         }
       }
 
-      # Admin Notification Logic
       if (exists("auth_notify_admin_action")) {
         details <- paste0(
           "Usuarios afectados: ", cnt, "\n",
@@ -1750,7 +1500,6 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       ))
     })
 
-    # Template Logic
     observeEvent(input$adm_email_tmpl, {
       req(input$adm_email_tmpl)
       tm <- input$adm_email_tmpl
@@ -1786,9 +1535,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     observeEvent(input$adm_confirm_email, {
       removeModal()
       rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
+      if (is.null(rows)) return()
+
       subj <- input$adm_email_subj
       body_tmpl <- input$adm_email_body
       if (!nzchar(subj) || !nzchar(body_tmpl)) {
@@ -1796,9 +1544,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         return()
       }
 
-      u <- user_reactive()
       con <- NULL
-      # Fetch sufficient data to generate checkout sessions (id, email, username)
       user_data <- data.frame()
       try(
         {
@@ -1822,30 +1568,22 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
           dest_user <- user_data$username[i]
           if (is.na(dest_email) || !nzchar(dest_email)) next
 
-          # Personalize body
           final_body <- body_tmpl
-          # Replace {{USERNAME}} if present (or just a generic 'Hola username')
-          # Simple replace for explicit tag:
           if (grepl("{{USERNAME}}", final_body, fixed = TRUE)) {
             final_body <- sub("{{USERNAME}}", dest_user, final_body, fixed = TRUE)
           }
 
           if (has_stripe_tag) {
-            # Generate unique session
-            # Construct user_row list expected by auth_create_checkout_session
             ur <- list(
               id = list(user_data$id[i]),
               email = list(user_data$email[i]),
               username = list(user_data$username[i])
             )
-            # Try creating session
-            # Verify auth_create_checkout_session exists
             if (exists("auth_create_checkout_session")) {
               sres <- try(auth_create_checkout_session(ur), silent = TRUE)
               if (!inherits(sres, "try-error") && isTRUE(sres$ok)) {
                 final_body <- sub("{{STRIPE_URL}}", sres$url, final_body, fixed = TRUE)
               } else {
-                # Fallback or error indication in email? Better not send broken link.
                 final_body <- sub("{{STRIPE_URL}}", "(Error generando enlace de pago. Contacta al soporte.)", final_body, fixed = TRUE)
               }
             } else {
@@ -1853,23 +1591,22 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
             }
           }
 
-          # Append App URL to generic/custom emails
           final_body <- paste0(final_body, "\n\nAccede a la App: https://apps.pugainversor.com/pugaxtrade/")
 
           tryCatch(
             {
-              res <- auth_send_generic_email(dest_email, subj, final_body)
-              if (isTRUE(res$ok)) cnt <- cnt + 1
+              if (exists("auth_send_generic_email")) {
+                res <- auth_send_generic_email(dest_email, subj, final_body)
+                if (isTRUE(res$ok)) cnt <- cnt + 1
+              }
             },
             error = function(e) {
-              # Log error but don't stop loop
               message(paste("Error sending email to", dest_email, ":", e$message))
             }
           )
         }
       })
 
-      # Admin Notification Logic
       if (exists("auth_notify_admin_action")) {
         details <- paste0(
           "Asunto: ", subj, "\n",
@@ -1891,10 +1628,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       }
       showModal(modalDialog(
         title = "Desactivar Membresía",
-        div(
-          style = "color: red; font-weight: bold;",
-          "¿Estás seguro de que deseas desactivar la membresía de los usuarios seleccionados?"
-        ),
+        div(style = "color: red; font-weight: bold;", "¿Estás seguro de que deseas desactivar la membresía de los usuarios seleccionados?"),
         "Esto revocará su acceso premium inmediatamente.",
         checkboxInput(ns("adm_deact_email"), "Enviar correo de notificación", value = TRUE),
         footer = tagList(
@@ -1902,7 +1636,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
           actionButton(ns("adm_confirm_deactivate"), "Confirmar Desactivación",
             class = "btn-danger",
             style = "background-color: #ff8c00; border-color: #ff8c00;"
-          ) # Orange
+          )
         )
       ))
     })
@@ -1910,18 +1644,12 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     observeEvent(input$adm_confirm_deactivate, {
       removeModal()
       rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
+      if (is.null(rows)) return()
 
       u <- user_reactive()
-      # Must be admin/super
       is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
-      if (!is_super && !db_is_admin(u)) {
-        return()
-      }
+      if (!is_super && !db_is_admin(u)) return()
 
-      # Robust Error Handling
       tryCatch(
         {
           con <- NULL
@@ -1948,7 +1676,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
                   db_manual_deactivate(uid)
                   cnt <- cnt + 1
 
-                  if (send_email && !is.na(uemail) && nzchar(uemail)) {
+                  if (send_email && !is.na(uemail) && nzchar(uemail) && exists("auth_send_generic_email")) {
                     subj <- "Membresía Desactivada - PugaX Trade"
                     body <- paste0(
                       "Hola ", uname, ",\n\n",
@@ -1958,9 +1686,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
                       "PugaX App: https://apps.pugainversor.com/pugaxtrade/\n\n",
                       "Saludos,\nEquipo PugaX"
                     )
-                    if (isTRUE(auth_send_generic_email(uemail, subj, body)$ok)) {
-                      emails_sent <- emails_sent + 1
-                    }
+                    if (isTRUE(auth_send_generic_email(uemail, subj, body)$ok)) emails_sent <- emails_sent + 1
                   }
                 },
                 silent = TRUE
@@ -1968,11 +1694,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
             }
           }
 
-          # Trigger Table Refresh
-          new_val <- users_trigger() + 1
-          users_trigger(new_val)
+          users_trigger(users_trigger() + 1)
 
-          # Admin Notification Logic
           if (exists("auth_notify_admin_action")) {
             details <- paste0(
               "Usuarios afectados: ", cnt, "\n",
@@ -2027,10 +1750,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       }
       showModal(modalDialog(
         title = "Eliminar Usuario",
-        div(
-          style = "color: red; font-weight: bold;",
-          "¿Estás seguro de que deseas ELIMINAR PERMANENTEMENTE a los usuarios seleccionados?"
-        ),
+        div(style = "color: red; font-weight: bold;", "¿Estás seguro de que deseas ELIMINAR PERMANENTEMENTE a los usuarios seleccionados?"),
         "Esta acción borrará todo su historial, sesiones y datos. NO se puede deshacer.",
         footer = tagList(
           modalButton("Cancelar"),
@@ -2042,19 +1762,13 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     observeEvent(input$adm_confirm_delete, {
       removeModal()
       rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
+      if (is.null(rows)) return()
 
       u <- user_reactive()
-      # Must be admin/super
       is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
-      if (!is_super && !db_is_admin(u)) {
-        return()
-      }
+      if (!is_super && !db_is_admin(u)) return()
 
       con <- NULL
-      # Fetch IDs, emails, names
       user_data <- data.frame()
       try(
         {
@@ -2074,7 +1788,6 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         uemail <- user_data$email[i]
         uname <- user_data$name[i]
 
-        # 1. Send Notification Email
         if (!is.na(uemail) && nzchar(uemail)) {
           try(
             {
@@ -2082,26 +1795,16 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
                 auth_send_account_deleted_email(uemail, uname)
                 emails_sent <- emails_sent + 1
               }
-
-
-              # Notify Admin of account deletion
-              # TEMPORARY DEBUG: Commenting out admin email to verify if this is the crash source
-              # if (exists("auth_notify_admin_account_deleted")) {
-              #   try(auth_notify_admin_account_deleted(uid, uname, uemail), silent = TRUE)
-              # }
             },
             silent = TRUE
           )
         }
 
-        # 2. Delete User from DB
         if (isTRUE(try(db_delete_user(uid), silent = TRUE))) {
           cnt <- cnt + 1
         }
       }
 
-
-      # Mensaje de éxito visible
       showNotification(sprintf("%d usuario(s) eliminado(s). (%d correos enviados)", cnt, emails_sent), type = "message", duration = 8)
       showModal(modalDialog(
         title = "Usuarios Eliminados",
@@ -2113,27 +1816,26 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     # ----------------- Descargar usuarios (Admin) -----------------
     output$download_users <- downloadHandler(
-      filename = function() {
-        paste0("usuarios_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv")
-      },
+      filename = function() paste0("usuarios_", format(Sys.time(), "%Y%m%d_%H%M"), ".csv"),
       content = function(file) {
         u <- user_reactive()
         if (is.null(u)) stop("No autorizado")
         is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
         if (!is_super && !db_is_admin(u)) stop("No autorizado")
+
         con <- NULL
         df <- data.frame()
         try(
           {
             con <- pool_init()
-            on.exit(try(poolReturn(con), silent = TRUE), add = TRUE) # <-- DEVOLVER al pool
+            on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
             df <- DBI::dbGetQuery(con, "
-            select id, username, email, name, country, phone, is_admin,
-                   created_at, trial_expires_at, last_login_at, active,
-                   membership_active, membership_activated_at,
-                   stripe_customer_id, stripe_subscription_id
-            from users order by created_at
-          ")
+              select id, username, email, name, country, phone, is_admin,
+                     created_at, trial_expires_at, last_login_at, active,
+                     membership_active, membership_activated_at,
+                     stripe_customer_id, stripe_subscription_id
+              from users order by created_at
+            ")
           },
           silent = TRUE
         )
@@ -2165,7 +1867,6 @@ server <- function(input, output, session) {
   session$userData$current_user <- reactiveVal(NULL)
   session$userData$session_token <- reactiveVal(NULL)
 
-
   # Sesión desde cookie
   observeEvent(input$cookie_auth,
     {
@@ -2173,10 +1874,7 @@ server <- function(input, output, session) {
       if (is.null(session$userData$current_user()) && has_tok) {
         u <- db_find_user_by_token(input$cookie_auth)
         if (!is.null(u)) {
-          # Lazy check/generate referral code on token lookup
-          # [MANUAL] Deshabilitado autogeneración al login. Solo por botón manual.
-          # db_ensure_referral_code(u$id[[1]])
-          u <- db_get_user_by_id(u$id[[1]]) # refresh
+          u <- db_get_user_by_id(u$id[[1]])
           session$userData$current_user(u)
           session$userData$session_token(input$cookie_auth)
         }
@@ -2187,33 +1885,30 @@ server <- function(input, output, session) {
   )
 
   # (Parche 2) Retorno de Stripe: activar y guardar IDs (customer/subscription)
+  # FIX: NO pagar comisión aquí (ya se paga en db_membership_activate dentro de db.R)
   observe({
     q <- parseQueryString(session$clientData$url_search)
     if (!is.null(q$paid) && q$paid == "1" && !is.null(q$session_id)) {
-      # Evitar reprocesos por refresh (usar [[ ]] por nombre no sintáctico)
-      if (isTRUE(session$userData[["__stripe_done"]])) {
-        return()
-      }
+      if (isTRUE(session$userData[["__stripe_done"]])) return()
       session$userData[["__stripe_done"]] <- TRUE
 
       u <- session$userData$current_user()
       if (!is.null(u)) {
-        # 1) Activamos membresía (tu helper maneja fechas)
         db_membership_activate(u$id[[1]])
-        # 2) Obtenemos session info e IDs de Stripe
+
         si <- stripe_get_session_info(q$session_id)
         if (!is.null(si)) {
-          db_update_user_stripe_ids(
+          # Usar la función del db.R (evita duplicados)
+          try(db_update_user_stripe_ids(
             user_id         = u$id[[1]],
             customer_id     = si$customer_id,
             subscription_id = si$subscription_id
-          )
+          ), silent = TRUE)
         }
-        # 3) Refrescar usuario en sesión
+
         u2 <- try(db_get_user_by_id(u$id[[1]]), silent = TRUE)
         if (!inherits(u2, "try-error") && !is.null(u2)) session$userData$current_user(u2)
-      
-        # 5) Email de confirmación si existe helper
+
         try(
           {
             if (exists("auth_send_payment_success")) auth_send_payment_success(session$userData$current_user())
@@ -2236,9 +1931,11 @@ server <- function(input, output, session) {
   })
 
   set_view <- function(v) {}
+
+  # FIX: NO autogenerar referral_code al login (se genera por botón en tab "Referidos")
   on_success <- function(user_row) {
-    # Lazy generate code on login
-    try(db_ensure_referral_code(user_row$id[[1]]), silent = TRUE)
+    # try(db_ensure_referral_code(user_row$id[[1]]), silent = TRUE)
+
     u_refreshed <- try(db_get_user_by_id(user_row$id[[1]]), silent = TRUE)
     if (!inherits(u_refreshed, "try-error") && !is.null(u_refreshed)) user_row <- u_refreshed
 
@@ -2247,9 +1944,7 @@ server <- function(input, output, session) {
   }
 
   auth_module("auth", set_view = set_view, on_success = on_success)
-  user_reactive <- reactive({
-    session$userData$current_user()
-  })
+  user_reactive <- reactive({ session$userData$current_user() })
   main_module("main", user_reactive = user_reactive, on_logout = function() {
     session$userData$current_user(NULL)
   })
@@ -2280,7 +1975,6 @@ server <- function(input, output, session) {
     session$userData$session_token(NULL)
     session$sendCustomMessage("delCookie", list(name = "puga_auth"))
     showNotification("Sesión cerrada por inactividad.", type = "warning", duration = 10)
-    # Force reload or UI update handled by current_user observer
   })
 
   # Cierre seguro del pool al apagar la app
@@ -2292,4 +1986,3 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
-
