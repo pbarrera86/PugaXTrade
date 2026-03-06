@@ -2212,21 +2212,7 @@ server <- function(input, output, session) {
         # 3) Refrescar usuario en sesión
         u2 <- try(db_get_user_by_id(u$id[[1]]), silent = TRUE)
         if (!inherits(u2, "try-error") && !is.null(u2)) session$userData$current_user(u2)
-
-        # 4) Referral Commission Logic (30% approx $9.00)
-        # Check if user has referred_by and commission not already paid (logic simplistic for now: valid payment = valid commission)
-        try(
-          {
-            if (!is.null(u2$referred_by) && !is.na(u2$referred_by[[1]])) {
-              # Add simple logging or check if this payment was already processed for commission?
-              # We rely on idempotency of this block (session$userData[["__stripe_done"]])
-              # Commission: $9.00 USD
-              db_add_commission(u2$referred_by[[1]], 9.00)
-            }
-          },
-          silent = TRUE
-        )
-
+      
         # 5) Email de confirmación si existe helper
         try(
           {
@@ -2306,3 +2292,4 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
