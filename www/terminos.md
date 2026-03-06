@@ -1,101 +1,314 @@
-Términos y Condiciones de Uso
+TÉRMINOS Y CONDICIONES DE USO
 
-Última actualización: 03/10/2025
-Titular del servicio: PEDRO BARRERA PUGA, RFC BAPP860629B28, con domicilio en LOS MORALES 13, EL CARRIZAL, QUERÉTARO, QUERÉTARO, MÉXICO, C.P. 76030 (“PugaX Trade Inteligente”, “la App”, “nosotros”).
-Contacto: +52 5951148765 · p.barrera.puga@gmail.com
+Plataforma PugaXTrade
+
+Última actualización: 5 de marzo de 2026
+
+Titular del servicio: PEDRO BARRERA PUGA
+RFC: BAPP860629B28
+Domicilio:  Querétaro, Querétaro, México, C.P. 76030
+
+Correo electrónico: p.barrera.puga@gmail.com
+
+Teléfono: +52 5951148765
+
+En adelante denominado “PugaXTrade”, “la Plataforma”, “nosotros” o “el Titular”.
 
 1. Aceptación de los Términos
 
-Al crear una cuenta, iniciar sesión o usar la App, aceptas estos Términos y nuestro Aviso de Privacidad. Si no estás de acuerdo, no uses la App.
+Al acceder, registrarte o utilizar la plataforma PugaXTrade, aceptas cumplir estos Términos y Condiciones, así como el Aviso de Privacidad correspondiente.
 
-2. Objeto del Servicio
+Si no estás de acuerdo con estos términos, debes abstenerte de utilizar la plataforma.
 
-PugaX Trade Inteligente ofrece herramientas de análisis financiero automatizado y generación de reportes. No brindamos asesoría financiera personalizada ni recomendaciones de inversión. Las decisiones que tomes con base en la App son de tu exclusiva responsabilidad.
+El uso continuado de la plataforma constituye aceptación plena de cualquier actualización de estos términos.
 
-3. Requisitos y Cuenta
+2. Naturaleza del Servicio
 
-Debes tener al menos 18 años y capacidad legal.
+PugaXTrade es una plataforma tecnológica de análisis financiero y visualización de información de mercado.
 
-Eres responsable de la veracidad de tus datos, la confidencialidad de tus credenciales y toda actividad en tu cuenta.
+La plataforma puede incluir:
 
-Podemos suspender o cancelar cuentas ante uso indebido, indicios de fraude, impago o incumplimiento de estos Términos.
+Análisis técnico automatizado
 
-4. Planes, Precios y Pagos
+Herramientas de análisis de acciones y mercados
 
-Ofrecemos suscripción anual (29.99 USD/año) u otros planes que publiquemos.
+Visualización de indicadores financieros
 
-Los pagos se procesan con Stripe; aceptas sus términos independientes. No almacenamos datos de tarjeta.
+Generación de reportes y métricas de mercado
 
-La suscripción se renueva automáticamente al término del periodo salvo cancelación previa (§5).
+Herramientas educativas sobre inversión
 
-Los precios pueden cambiar; notificaremos con antelación razonable. Cambios aplican al siguiente periodo.
+Importante:
 
-Los precios no incluyen impuestos que puedan aplicar en tu jurisdicción.
+PugaXTrade NO proporciona asesoría financiera, bursátil, fiscal ni legal.
 
-5. Cancelaciones y Reembolsos
+La información mostrada:
 
-Puedes cancelar la renovación automática desde el Portal de Cliente de Stripe o solicitándolo a p.barrera.puga@gmail.com
-.
+es educativa e informativa
 
-Una vez iniciado el periodo contratado, no hay reembolsos salvo lo exigido por la ley o lo indicado en promociones específicas.
+puede contener errores o retrasos
 
-Al cancelar, mantendrás acceso hasta el fin del periodo pagado.
+no constituye recomendación de inversión
 
-6. Prueba Gratuita
+Todas las decisiones de inversión son responsabilidad exclusiva del usuario.
 
-Si ofrecemos prueba gratuita, al finalizar se activará la suscripción de pago salvo cancelación previa. Podemos limitar o revocar la prueba para evitar abusos.
+3. Elegibilidad de Uso
+
+Para utilizar la plataforma debes:
+
+Tener al menos 18 años
+
+Tener capacidad legal para contratar
+
+Proporcionar información veraz en tu registro
+
+El usuario es responsable de:
+
+mantener la confidencialidad de sus credenciales
+
+todas las actividades realizadas en su cuenta
+
+PugaXTrade podrá suspender o cancelar cuentas cuando exista:
+
+uso indebido del servicio
+
+fraude o intento de fraude
+
+incumplimiento de estos términos
+
+falta de pago
+
+4. Planes, Suscripciones y Pagos
+
+La plataforma puede ofrecer planes gratuitos o de pago.
+
+Los planes pueden incluir:
+
+Suscripción anual
+
+Suscripción mensual
+
+Acceso limitado gratuito
+
+Los pagos se procesan mediante proveedores externos de pago, como:
+
+Stripe
+
+El usuario acepta que:
+
+PugaXTrade no almacena datos de tarjetas bancarias
+
+los pagos están sujetos a los términos del proveedor de pago
+
+Las suscripciones se renovarán automáticamente al final de cada periodo contratado, salvo cancelación previa.
+
+Los precios:
+
+pueden modificarse en cualquier momento
+
+se aplicarán a partir del siguiente ciclo de facturación
+
+no incluyen impuestos que puedan aplicar según la jurisdicción del usuario.
+
+5. Cancelación de Suscripción
+
+El usuario puede cancelar su suscripción en cualquier momento:
+
+desde el portal de cliente del proveedor de pago
+
+o solicitándolo al correo p.barrera.puga@gmail.com
+
+La cancelación:
+
+evita renovaciones futuras
+
+mantiene el acceso hasta finalizar el periodo pagado
+
+Salvo disposición legal obligatoria, no se realizan reembolsos por periodos ya iniciados.
+
+6. Periodos de Prueba
+
+La plataforma puede ofrecer pruebas gratuitas o promociones temporales.
+
+Si no se cancela antes de finalizar el periodo de prueba, la suscripción podrá convertirse automáticamente en un plan de pago.
+
+PugaXTrade se reserva el derecho de limitar o cancelar pruebas gratuitas en caso de abuso.
 
 7. Licencia de Uso
 
-Te otorgamos una licencia limitada, no exclusiva e intransferible para usar la App. Está prohibido el ingeniería inversa, scraping, uso automatizado no autorizado, sublicenciar o revender el acceso.
+PugaXTrade concede al usuario una licencia limitada, no exclusiva, no transferible y revocable para utilizar la plataforma.
+
+El usuario NO podrá:
+
+copiar o reproducir el software
+
+realizar ingeniería inversa
+
+usar bots o automatizaciones no autorizadas
+
+revender acceso a la plataforma
+
+extraer datos masivamente (scraping)
+
+explotar comercialmente el sistema sin autorización
 
 8. Propiedad Intelectual
 
-La App, su diseño, marca, código, modelos, bases de datos y contenidos son de nuestra propiedad o de terceros licenciantes. No adquieres derechos de propiedad intelectual por usar la App.
+Todos los derechos relacionados con:
 
-9. Contenido del Usuario
+software
 
-Si subes o ingresas datos (p. ej., tickers), declaras que tienes derecho a usarlos y nos otorgas una licencia mundial, no exclusiva y gratuita para procesarlos con el fin de operar la App. No usamos tus datos con fines publicitarios sin tu consentimiento.
+algoritmos
 
-10. Integraciones de Terceros
+modelos de análisis
 
-La App se apoya en servicios de terceros (p. ej., Stripe para pagos, shinyapps.io para hosting, SMTP/email para notificaciones). No somos responsables por indisponibilidad o fallas imputables a dichos terceros, pero haremos esfuerzos razonables para restablecer el servicio.
+diseño de la plataforma
 
-11. Disponibilidad y Mantenimiento
+marca PugaXTrade
 
-La App se ofrece “como está” y “según disponibilidad”. Podemos implementar mantenimiento programado o actualizaciones. No garantizamos disponibilidad continua ni ausencia de errores.
+bases de datos
 
-12. Descargo de Responsabilidad (No asesoría financiera)
+contenidos
 
-La App no es asesoría financiera, fiscal, contable ni legal. La información es de carácter educativo/informativo y puede contener errores o desactualizaciones. Invertir implica riesgos, incluyendo la pérdida del capital.
+son propiedad de PEDRO BARRERA PUGA o de sus licenciantes.
+
+El uso de la plataforma no otorga derechos de propiedad intelectual al usuario.
+
+9. Datos del Usuario
+
+El usuario puede introducir datos en la plataforma como:
+
+símbolos bursátiles (tickers)
+
+parámetros de análisis
+
+configuraciones personalizadas
+
+El usuario declara tener derecho a utilizar dichos datos.
+
+El usuario otorga a PugaXTrade una licencia limitada para procesar dichos datos exclusivamente con fines operativos de la plataforma.
+
+PugaXTrade no venderá ni utilizará los datos del usuario para publicidad sin consentimiento.
+
+El tratamiento de datos personales se rige por el Aviso de Privacidad correspondiente.
+
+10. Servicios de Terceros
+
+La plataforma puede depender de servicios externos, tales como:
+
+proveedores de pagos
+
+servicios de hosting
+
+servicios de datos financieros
+
+servicios de correo electrónico
+
+PugaXTrade no es responsable por interrupciones causadas por terceros, aunque realizará esfuerzos razonables para restablecer el servicio.
+
+11. Disponibilidad del Servicio
+
+La plataforma se ofrece “tal cual” y “según disponibilidad”.
+
+PugaXTrade no garantiza:
+
+disponibilidad continua
+
+ausencia de errores
+
+precisión absoluta de los datos
+
+Podrán realizarse:
+
+mantenimientos programados
+
+actualizaciones técnicas
+
+mejoras del sistema
+
+sin previo aviso cuando sea necesario.
+
+12. Riesgos de Inversión
+
+Los mercados financieros implican riesgos significativos, incluyendo la posible pérdida total del capital invertido.
+
+El usuario reconoce que:
+
+utiliza la plataforma bajo su propio riesgo
+
+las herramientas proporcionadas son informativas
+
+PugaXTrade no se hace responsable por pérdidas financieras derivadas del uso de la plataforma.
 
 13. Limitación de Responsabilidad
 
 En la máxima medida permitida por la ley:
 
-No seremos responsables por lucro cesante, pérdida de datos, daños indirectos o consecuenciales.
+PugaXTrade no será responsable por:
 
-Nuestra responsabilidad total acumulada por cualquier reclamación se limita al monto pagado por ti a la App en los 12 meses previos al incidente.
+pérdidas financieras
 
-14. Cumplimiento Legal y Uso Aceptable
+pérdida de datos
 
-No podrás usar la App para: actividades ilegales, violar derechos de terceros, introducir malware, interferir con la seguridad o la integridad del servicio.
+lucro cesante
 
-15. Terminación
+daños indirectos o consecuenciales
 
-Podemos terminar o suspender tu acceso por incumplimiento. Tú puedes terminar en cualquier momento cancelando la renovación. Las cláusulas que por su naturaleza deban subsistir (p. ej., propiedad intelectual, limitación de responsabilidad) seguirán vigentes.
+La responsabilidad total acumulada de PugaXTrade no excederá el monto pagado por el usuario durante los 12 meses anteriores al evento que origine la reclamación.
 
-16. Modificaciones a los Términos
+14. Uso Prohibido
 
-Podemos modificar estos Términos. Publicaremos la versión actualizada con fecha de “Última actualización”. Cambios sustanciales serán notificados por medios razonables. El uso continuo implica aceptación.
+El usuario se compromete a no utilizar la plataforma para:
+
+actividades ilegales
+
+manipulación de mercados
+
+distribución de malware
+
+violación de derechos de terceros
+
+ataques al sistema o su seguridad
+
+Cualquier uso indebido podrá resultar en suspensión inmediata de la cuenta.
+
+15. Terminación del Servicio
+
+PugaXTrade podrá suspender o terminar el acceso del usuario cuando:
+
+exista incumplimiento de estos términos
+
+se detecte uso fraudulento
+
+exista riesgo para la seguridad del sistema
+
+El usuario puede terminar el uso de la plataforma en cualquier momento.
+
+Las disposiciones relacionadas con propiedad intelectual, limitación de responsabilidad y uso de datos continuarán vigentes tras la terminación.
+
+16. Modificaciones de los Términos
+
+PugaXTrade podrá actualizar estos Términos y Condiciones en cualquier momento.
+
+Las modificaciones serán publicadas en la plataforma indicando la fecha de última actualización.
+
+El uso continuado de la plataforma implica aceptación de los nuevos términos.
 
 17. Ley Aplicable y Jurisdicción
 
-Estos Términos se rigen por las leyes de México. Para controversias, las partes se someten a los tribunales competentes de Ciudad de México, renunciando a cualquier otro fuero, salvo que la ley aplicable disponga lo contrario.
+Estos Términos se rigen por las leyes de los Estados Unidos Mexicanos.
+
+Para cualquier controversia relacionada con el uso de la plataforma, las partes se someten a la jurisdicción de los tribunales competentes de la Ciudad de México, renunciando a cualquier otro fuero que pudiera corresponderles.
 
 18. Contacto
 
-PEDRO BARRERA PUGA (RFC BAPP860629B28)
-LOS MORALES 13, EL CARRIZAL, QUERÉTARO, QUERÉTARO, MÉXICO, C.P. 76030
-Tel: +52 5951148765
-Correo: p.barrera.puga@gmail.com
+Para cualquier consulta relacionada con estos términos:
+
+PEDRO BARRERA PUGA
+RFC: BAPP860629B28
+
+📍 Querétaro, Querétaro, México
+
+📧 p.barrera.puga@gmail.com
+
+📞 +52 5951148765
