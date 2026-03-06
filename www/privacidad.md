@@ -1,90 +1,298 @@
-Aviso de Privacidad
+AVISO DE PRIVACIDAD
 
-Última actualización: 03/10/2025
-Responsable: PEDRO BARRERA PUGA, RFC BAPP860629B28, domicilio LOS MORALES 13, EL CARRIZAL, QUERÉTARO, QUERÉTARO, MÉXICO, C.P. 76030 (“nosotros”, “PugaX Trade Inteligente”).
-Contacto de privacidad: p.barrera.puga@gmail.com
- · Tel: +52 5951148765
+Plataforma PugaXTrade
 
-Este Aviso se emite conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP) y su Reglamento. Cuando corresponda, observamos principios del GDPR de forma complementaria.
+Última actualización: 5 de marzo de 2026
 
-1. Datos Personales que Tratamos
+Responsable del tratamiento de datos personales:
 
-Identificación y contacto: nombre, correo electrónico, país, teléfono (opcional), usuario.
+PEDRO BARRERA PUGA
+RFC: BAPP860629B28
 
-Datos de cuenta y uso: configuración, acciones dentro de la App, logs técnicos, IP, dispositivo/navegador, cookies.
+Domicilio:
+Querétaro, Querétaro, México
+C.P. 76030
 
-Pago y facturación: estado de suscripción, identificadores de cliente/suscripción en Stripe (no almacenamos tu número de tarjeta).
+Correo de contacto para privacidad:
+📧 p.barrera.puga@gmail.com
 
-Comunicaciones: correos/notificaciones de alta, restablecimiento, confirmaciones.
+Teléfono:
+📞 +52 5951148765
 
-2. Finalidades del Tratamiento
+Este Aviso de Privacidad se emite en cumplimiento de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP) y su Reglamento.
 
-Primarias (necesarias):
+Cuando resulte aplicable, PugaXTrade también observa principios de protección de datos reconocidos internacionalmente, incluyendo estándares compatibles con el Reglamento General de Protección de Datos de la Unión Europea (GDPR).
 
-Crear y administrar tu cuenta y sesiones.
+1. Datos Personales que Recopilamos
 
-Procesar pagos y suscripciones (Stripe).
+Para el funcionamiento de la plataforma PugaXTrade, podemos recopilar las siguientes categorías de datos personales:
 
-Proveer funciones de análisis, generar reportes y soporte técnico.
+Datos de identificación
 
-Seguridad, prevención de fraude, continuidad y mejora del servicio.
+Nombre
 
-Secundarias (opcionales):
+Correo electrónico
 
-Enviar novedades, ofertas o encuestas.
-Puedes negar o revocar tu consentimiento para finalidades secundarias escribiendo a p.barrera.puga@gmail.com
-.
+Nombre de usuario
+
+País o región
+
+Datos de contacto (opcionales)
+
+Número telefónico
+
+Datos técnicos y de uso
+
+Dirección IP
+
+Tipo de dispositivo
+
+Sistema operativo
+
+Navegador
+
+registros técnicos (logs)
+
+actividad dentro de la plataforma
+
+configuraciones del usuario
+
+Datos de suscripción y facturación
+
+estado de suscripción
+
+identificadores de cliente y suscripción
+
+historial de pagos
+
+Los pagos se procesan mediante el proveedor externo:
+
+Stripe
+
+PugaXTrade no almacena números de tarjetas bancarias ni información financiera sensible.
+
+Comunicaciones
+
+Podemos registrar comunicaciones relacionadas con:
+
+registro de cuenta
+
+recuperación de contraseña
+
+confirmaciones de pago
+
+soporte técnico
+
+notificaciones del servicio
+
+2. Finalidades del Tratamiento de Datos
+
+Los datos personales se utilizan para las siguientes finalidades:
+
+Finalidades primarias (necesarias)
+
+crear y administrar cuentas de usuario
+
+proporcionar acceso a la plataforma
+
+procesar pagos y suscripciones
+
+generar análisis y reportes financieros
+
+brindar soporte técnico
+
+mantener la seguridad del sistema
+
+prevenir fraude o uso indebido
+
+mejorar el funcionamiento de la plataforma
+
+Estas finalidades son necesarias para la prestación del servicio.
+
+Finalidades secundarias (opcionales)
+
+Podremos utilizar datos de contacto para:
+
+enviar actualizaciones del producto
+
+informar sobre nuevas funciones
+
+enviar encuestas o comunicaciones informativas
+
+El usuario puede rechazar o revocar el consentimiento para estas finalidades enviando una solicitud a:
+
+📧 p.barrera.puga@gmail.com
 
 3. Fundamento Legal del Tratamiento
 
-Tratamos datos con base en: (i) consentimiento, (ii) ejecución de contrato (proveer la App), (iii) interés legítimo (mejora y seguridad), y obligaciones legales (p. ej., fiscales).
+El tratamiento de datos personales se basa en:
 
-4. Transferencias y Encargados
+el consentimiento del usuario
 
-Compartimos datos con proveedores que actúan como encargados:
+la ejecución del contrato de servicio (uso de la plataforma)
 
-Stripe, Inc. (procesamiento de pagos).
+el interés legítimo para seguridad y mejora del servicio
 
-Proveedor de hosting (p. ej., shinyapps.io / Posit).
+el cumplimiento de obligaciones legales (por ejemplo fiscales o regulatorias)
 
-Proveedor de correo (SMTP, p. ej., Gmail/Workspace).
-Estas operaciones pueden implicar transferencias internacionales. Implementamos salvaguardas contractuales y técnicas razonables. No vendemos tus datos personales.
+4. Transferencias de Datos
 
-5. Cookies y Tecnologías Similares
+Para operar la plataforma, PugaXTrade puede compartir datos con proveedores tecnológicos que actúan como encargados del tratamiento, incluyendo:
 
-Usamos cookies necesarias para autenticación y operación (p. ej., puga_auth) y, eventualmente, analíticas. Puedes gestionarlas desde tu navegador. Si bloqueas ciertas cookies, algunas funciones podrían no operar.
+proveedores de pago
 
-6. Conservación
+proveedores de hosting y servicios en la nube
 
-Conservamos tus datos mientras tu cuenta esté activa y por el tiempo adicional necesario para cumplir obligaciones legales o resolver disputas. Luego los suprimimos o anonimizamos de forma segura.
+proveedores de correo electrónico
 
-7. Seguridad
+servicios de infraestructura tecnológica
 
-Aplicamos medidas técnicas y organizativas razonables (cifrado en tránsito, controles de acceso, registros). Ningún sistema es infalible; mantén contraseñas seguras y no las compartas.
+Entre ellos puede incluirse:
 
-8. Derechos ARCO (y derechos equivalentes)
+Stripe
 
-Tienes derecho a Acceder, Rectificar, Cancelar u Oponerte al tratamiento, así como a revocar tu consentimiento y limitar el uso/divulgación.
-Para ejercerlos, envía un correo a p.barrera.puga@gmail.com
- con: nombre completo, medio de respuesta, identificación y descripción clara de tu solicitud. Responderemos en los plazos de la LFPDPPP.
-Si te encuentras en la UE/EEE, también puedes ejercer derechos GDPR (portabilidad, limitación, oposición ante autoridad de control).
+Estos proveedores solo procesan datos para permitir el funcionamiento del servicio y conforme a contratos de confidencialidad y protección de datos.
 
-9. Menores de Edad
+Debido a la naturaleza de los servicios tecnológicos, algunos proveedores pueden operar fuera de México, lo que podría implicar transferencias internacionales de datos.
 
-La App no está dirigida a menores de 18 años. Si detectamos datos de un menor, los eliminaremos a solicitud del titular o su tutor.
+PugaXTrade implementa medidas contractuales y técnicas razonables para proteger la información personal.
 
-10. Cambios al Aviso
+PugaXTrade no vende ni comercializa datos personales de los usuarios.
 
-Podemos actualizar este Aviso. Publicaremos la versión vigente con fecha de “Última actualización”. Cambios sustanciales podrán notificarse por correo o dentro de la App.
+5. Uso de Cookies y Tecnologías Similares
 
-11. Contacto del Responsable / DPO
+La plataforma puede utilizar cookies y tecnologías similares para:
+
+autenticación de usuarios
+
+funcionamiento de sesiones
+
+seguridad del sistema
+
+análisis de uso de la plataforma
+
+Ejemplo de cookie técnica:
+
+cookie de autenticación de sesión
+
+Las cookies necesarias son indispensables para el funcionamiento de la plataforma.
+
+El usuario puede configurar su navegador para bloquear cookies; sin embargo, esto podría afectar algunas funciones del servicio.
+
+6. Conservación de los Datos
+
+Los datos personales serán conservados:
+
+mientras la cuenta del usuario permanezca activa
+
+durante el tiempo necesario para cumplir obligaciones legales
+
+para resolver disputas o cumplir obligaciones contractuales
+
+Una vez finalizado este periodo, los datos podrán ser:
+
+eliminados de forma segura
+
+anonimizados para fines estadísticos
+
+7. Medidas de Seguridad
+
+PugaXTrade implementa medidas técnicas y organizativas razonables para proteger los datos personales, incluyendo:
+
+cifrado de comunicaciones (HTTPS)
+
+control de acceso a sistemas
+
+registros de actividad
+
+almacenamiento seguro
+
+No obstante, el usuario reconoce que ningún sistema en Internet es completamente infalible.
+
+Se recomienda:
+
+utilizar contraseñas seguras
+
+no compartir credenciales de acceso
+
+8. Derechos ARCO
+
+De acuerdo con la legislación mexicana, el usuario tiene derecho a ejercer los Derechos ARCO:
+
+Acceso a sus datos personales
+
+Rectificación de datos incorrectos
+
+Cancelación de datos cuando ya no sean necesarios
+
+Oposición al tratamiento de sus datos
+
+También puede:
+
+revocar el consentimiento otorgado
+
+solicitar limitar el uso o divulgación de sus datos
+
+Para ejercer estos derechos, el usuario deberá enviar una solicitud a:
+
+📧 p.barrera.puga@gmail.com
+
+La solicitud deberá incluir:
+
+nombre del titular
+
+medio de contacto para responder
+
+copia de identificación oficial
+
+descripción clara de la solicitud
+
+Las solicitudes serán atendidas dentro de los plazos establecidos por la LFPDPPP.
+
+9. Usuarios Internacionales
+
+Si el usuario se encuentra fuera de México, el tratamiento de datos también podrá estar sujeto a regulaciones locales.
+
+En el caso de usuarios ubicados en la Unión Europea, podrán ejercer derechos adicionales reconocidos por el GDPR, tales como:
+
+derecho a la portabilidad de datos
+
+derecho a limitar el tratamiento
+
+derecho a presentar reclamaciones ante autoridades de protección de datos
+
+10. Menores de Edad
+
+La plataforma no está dirigida a menores de 18 años.
+
+Si se detecta que un menor ha proporcionado datos personales sin consentimiento de sus padres o tutores, dichos datos podrán ser eliminados.
+
+11. Cambios al Aviso de Privacidad
+
+PugaXTrade podrá actualizar este Aviso de Privacidad en cualquier momento.
+
+Las modificaciones serán publicadas en la plataforma indicando la fecha de última actualización.
+
+Cuando los cambios sean sustanciales, podrán notificarse por:
+
+correo electrónico
+
+avisos dentro de la plataforma
+
+12. Contacto del Responsable
+
+Para cualquier consulta relacionada con este Aviso de Privacidad o el tratamiento de datos personales:
 
 PEDRO BARRERA PUGA
-LOS MORALES 13, EL CARRIZAL, QUERÉTARO, QUERÉTARO, MÉXICO, C.P. 76030
-Correo (privacidad y soporte): p.barrera.puga@gmail.com
+RFC: BAPP860629B28
 
-Tel: +52 5951148765
+📍Querétaro, Querétaro, México
+C.P. 76030
 
-12. Aceptación
+📧 p.barrera.puga@gmail.com
 
-Al usar la App confirmas que leíste y comprendes este Aviso y consientes el tratamiento conforme a los fines indicados.
+📞 +52 5951148765
+
+13. Consentimiento
+
+Al registrarse o utilizar la plataforma PugaXTrade, el usuario declara haber leído y comprendido este Aviso de Privacidad y otorga su consentimiento para el tratamiento de sus datos personales conforme a lo aquí establecido.
