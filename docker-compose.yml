@@ -1,3 +1,4 @@
+# ── PugaX Trade — docker-compose.yml ─────────────────────────────────────────
 services:
   pugaxtrade:
     build:
