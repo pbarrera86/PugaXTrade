@@ -901,16 +901,28 @@ auth_module <- function(id, set_view, on_success) {
         return()
       }
 
-      # Password already set in db_register_user
-      try(
+      # Call authentication helpers for notifications
+      tryCatch(
         {
-          # DEBUG: Admin email re-enabled with safety checks
-          if (exists("auth_notify_admin_new_user")) auth_notify_admin_new_user(res$user, plain_password = pass1)
+          # 1. Notify Admin
+          f_admin <- get0("auth_notify_admin_new_user", envir = .GlobalEnv, inherits = TRUE)
+          if (is.function(f_admin)) {
+            f_admin(res$user, plain_password = pass1)
+          } else {
+            message("Warning: auth_notify_admin_new_user not found.")
+          }
 
-          # Send VERIFICATION email instead of welcome credentials
-          if (exists("auth_send_verification_email")) auth_send_verification_email(res$user, token = res$user$verification_token[[1]])
+          # 2. Send Verification Email
+          f_verify <- get0("auth_send_verification_email", envir = .GlobalEnv, inherits = TRUE)
+          if (is.function(f_verify)) {
+            f_verify(res$user, token = res$user$verification_token[[1]])
+          } else {
+            message("Warning: auth_send_verification_email not found.")
+          }
         },
-        silent = FALSE
+        error = function(e) {
+          message("Execution Error in registration email triggers: ", e$message)
+        }
       )
 
       output$reg_msg <- renderUI(div(class = "alert alert-success mt-3", tags$b("Registro exitoso."), br(), "Revisa tu correo para activar tu cuenta."))
@@ -930,7 +942,10 @@ auth_module <- function(id, set_view, on_success) {
       if (nrow(u) > 0) {
         token <- db_create_reset_token(u$id[[1]], ttl_hours = 48)
         link <- paste0(PUBLIC_BASE_URL, "?reset=", token)
-        if (exists("auth_send_reset_email")) try(auth_send_reset_email(u, link), silent = TRUE)
+        f_reset <- get0("auth_send_reset_email", envir = .GlobalEnv, inherits = TRUE)
+        if (is.function(f_reset)) {
+          tryCatch(f_reset(u, link), error = function(e) message("Error in auth_send_reset_email: ", e$message))
+        }
       }
     })
 
@@ -1204,7 +1219,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
           db_set_password(u$username[[1]], new_p1)
 
           # Send Email Notification
-          if (exists("auth_send_generic_email")) {
+          f_generic <- get0("auth_send_generic_email", envir = .GlobalEnv, inherits = TRUE)
+          if (is.function(f_generic)) {
             subj <- "Contrasena Actualizada - PugaX Trade"
             body <- paste0(
               "Hola ", u$name[[1]], ",\n\n",
@@ -1213,12 +1229,13 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
               "Si no fuiste tu, contacta al soporte inmediatamente.\n\n",
               "Saludos,\nEquipo PugaX"
             )
-            try(auth_send_generic_email(u$email[[1]], subj, body), silent = TRUE)
+            tryCatch(f_generic(u$email[[1]], subj, body), error = function(e) message("Error in auth_send_generic_email: ", e$message))
           }
 
           # Notify Admin of password change
-          if (exists("auth_notify_admin_password_change")) {
-            try(auth_notify_admin_password_change(u), silent = TRUE)
+          f_admin_changed <- get0("auth_notify_admin_password_change", envir = .GlobalEnv, inherits = TRUE)
+          if (is.function(f_admin_changed)) {
+            tryCatch(f_admin_changed(u), error = function(e) message("Error in auth_notify_admin_password_change: ", e$message))
           }
 
           updateTextInput(session, "acc_old", value = "")
@@ -1387,8 +1404,9 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       shinyjs::disable(ns("mb_pay"))
       on.exit(shinyjs::enable(ns("mb_pay")), add = TRUE)
 
-      if (exists("auth_create_checkout_session")) {
-        res <- try(auth_create_checkout_session(u), silent = TRUE)
+      f_checkout <- get0("auth_create_checkout_session", envir = .GlobalEnv, inherits = TRUE)
+      if (is.function(f_checkout)) {
+        res <- try(f_checkout(u), silent = TRUE)
         if (inherits(res, "try-error") || !isTRUE(res$ok)) {
           res <- stripe_checkout_fallback(u)
         }
