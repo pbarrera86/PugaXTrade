@@ -17,17 +17,36 @@ suppressWarnings({
 
 # -------- Config --------
 .auth_load_cfg <- function() {
+  # 1. Environment variables takes priority
+  read_env <- function(key) {
+    v <- Sys.getenv(key, unset = NA_character_)
+    if (!is.na(v) && nzchar(v)) v else NULL
+  }
+
+  cfg_env <- list(
+    host         = read_env("SMTP_HOST") %||% read_env("EMAIL_HOST"),
+    port         = read_env("SMTP_PORT") %||% read_env("EMAIL_PORT"),
+    user         = read_env("SMTP_USER") %||% read_env("EMAIL_USER"),
+    pass         = read_env("SMTP_PASS") %||% read_env("EMAIL_PASS") %||% read_env("SMTP_PASSWORD"),
+    from         = read_env("SMTP_FROM") %||% read_env("EMAIL_FROM"),
+    admin_email  = read_env("ADMIN_EMAIL") %||% read_env("SMTP_ADMIN")
+  )
+
+  # Remove NULLs
+  cfg_env <- cfg_env[!vapply(cfg_env, is.null, logical(1))]
+
+  # 2. smtp.yml as fallback
   path <- "smtp.yml"
-  if (!file.exists(path)) {
-    return(list())
+  cfg_file <- list()
+  if (file.exists(path)) {
+    cfg_file <- tryCatch(yaml::read_yaml(path), error = function(e) {
+      message("Error reading smtp.yml: ", e$message)
+      list()
+    })
   }
-  cfg <- tryCatch(yaml::read_yaml(path), error = function(e) {
-    message("Error reading smtp.yml: ", e$message)
-    NULL
-  })
-  if (inherits(cfg, "try-error") || is.null(cfg)) {
-    return(list())
-  }
+
+  # Merge: Env vars override file
+  cfg <- modifyList(as.list(cfg_file), as.list(cfg_env))
   cfg
 }
 
@@ -66,15 +85,31 @@ auth_build_reset_link <- function(token) {
 }
 
 .smtp_server <- function(cfg) {
-  if (is.null(cfg$host)) {
+  if (is.null(cfg$host) || !nzchar(cfg$host)) {
+    message("SMTP Error: No 'host' configured (check environment variables or smtp.yml).")
     return(NULL)
   }
-  emayili::server(
-    host     = cfg$host,
-    port     = as.integer(cfg$port %||% 587),
-    username = cfg$user,
-    password = cfg$pass,
-    reuse    = FALSE
+  if (is.null(cfg$user) || !nzchar(cfg$user)) {
+    message("SMTP Error: No 'user' configured.")
+  }
+
+  # Basic diagnostic
+  message(sprintf("DEBUG: Initializing SMTP server %s:%s", cfg$host, cfg$port %||% 587))
+
+  tryCatch(
+    {
+      emayili::server(
+        host     = cfg$host,
+        port     = as.integer(cfg$port %||% 587),
+        username = cfg$user,
+        password = cfg$pass,
+        reuse    = FALSE
+      )
+    },
+    error = function(e) {
+      message("SMTP Server Error: ", e$message)
+      NULL
+    }
   )
 }
 
