@@ -860,90 +860,89 @@ auth_module <- function(id, set_view, on_success) {
     observeEvent(input$btn_do_register, {
       shinyjs::disable("btn_do_register")
       on.exit(shinyjs::enable("btn_do_register"), add = TRUE)
-      email <- trimws(input$reg_email)
-      name <- trimws(input$reg_name)
-      user <- trimws(input$reg_username)
-      # Strict Regex for Email
-      email_regex <- "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
-      if (!nzchar2(email) || !grepl(email_regex, email)) {
-        output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Correo inválido. Por favor usa un correo real."))
-        return()
-      }
-      if (!nzchar2(name)) {
-        output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Indica tu nombre."))
-        return()
-      }
-      pass1 <- input$reg_pass1
-      pass2 <- input$reg_pass2
-      if (!nzchar2(pass1) || pass1 != pass2) {
-        output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Las contraseñas no coinciden."))
-        return()
-      }
-      country <- input$reg_country
-      phone <- trimws(input$reg_phone)
-      if (!isTRUE(input$reg_tos)) {
-        output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Debes aceptar términos y condiciones."))
-        return()
-      }
 
-      res <- db_register_user(
-        username = user,
-        email = email,
-        name = name,
-        country = country,
-        phone = if (nzchar2(phone)) phone else NA_character_,
-        referred_by = referred_by_id(),
-        password = pass1
-      )
-
-      if (!isTRUE(res$ok)) {
-        output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", res$message))
-        return()
-      }
-
-      # Call authentication helpers for notifications
       tryCatch(
         {
-          message("DEBUG: Starting notification triggers for new user registration.")
-          
-          # Check if res$user is valid
-          if (is.null(res$user) || nrow(res$user) == 0) {
-            message("Warning: res$user is empty or NULL. Cannot send notifications.")
-          } else {
-             # 1. Notify Admin
-             f_admin <- get0("auth_notify_admin_new_user", envir = .GlobalEnv, inherits = TRUE)
-             if (is.function(f_admin)) {
-               message("DEBUG: Found auth_notify_admin_new_user. Calling...")
-               f_admin(res$user, plain_password = pass1)
-             } else {
-               message("Warning: auth_notify_admin_new_user not found.")
-             }
-
-             # 2. Send Verification Email
-             v_token <- if (!is.null(res$user$verification_token)) res$user$verification_token[[1]] else NULL
-             if (is.null(v_token)) {
-               message("Warning: verification_token missing from res$user.")
-             } else {
-               f_verify <- get0("auth_send_verification_email", envir = .GlobalEnv, inherits = TRUE)
-               if (is.function(f_verify)) {
-                 message("DEBUG: Found auth_send_verification_email. Calling...")
-                 f_verify(res$user, token = v_token)
-               } else {
-                 message("Warning: auth_send_verification_email not found.")
-               }
-             }
+          email <- trimws(input$reg_email)
+          name <- trimws(input$reg_name)
+          user <- trimws(input$reg_username)
+          # Strict Regex for Email
+          email_regex <- "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+          if (!nzchar2(email) || !grepl(email_regex, email)) {
+            output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Correo inválido. Por favor usa un correo real."))
+            return()
           }
-          message("DEBUG: Notification triggers completed (check above for any warnings).")
+          if (!nzchar2(name)) {
+            output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Indica tu nombre."))
+            return()
+          }
+          pass1 <- input$reg_pass1
+          pass2 <- input$reg_pass2
+          if (!nzchar2(pass1) || pass1 != pass2) {
+            output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Las contraseñas no coinciden."))
+            return()
+          }
+          country <- input$reg_country
+          phone <- trimws(input$reg_phone)
+          if (!isTRUE(input$reg_tos)) {
+            output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Debes aceptar términos y condiciones."))
+            return()
+          }
+
+          res <- db_register_user(
+            username = user,
+            email = email,
+            name = name,
+            country = country,
+            phone = if (nzchar2(phone)) phone else NA_character_,
+            referred_by = referred_by_id(),
+            password = pass1
+          )
+
+          if (!isTRUE(res$ok)) {
+            output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", res$message))
+            return()
+          }
+
+          # Call authentication helpers for notifications
+          tryCatch(
+            {
+              message("DEBUG: Starting notification triggers for new user registration.")
+              # Check if res$user is valid
+              if (is.null(res$user) || nrow(res$user) == 0) {
+                message("Warning: res$user is empty or NULL. Cannot send notifications.")
+              } else {
+                # 1. Notify Admin
+                f_admin <- get0("auth_notify_admin_new_user", envir = .GlobalEnv, inherits = TRUE)
+                if (is.function(f_admin)) {
+                  message("DEBUG: Found auth_notify_admin_new_user. Calling...")
+                  f_admin(res$user, plain_password = pass1)
+                }
+                # 2. Send Verification Email
+                v_token <- if (!is.null(res$user$verification_token)) res$user$verification_token[[1]] else NULL
+                if (!is.null(v_token)) {
+                  f_verify <- get0("auth_send_verification_email", envir = .GlobalEnv, inherits = TRUE)
+                  if (is.function(f_verify)) {
+                    message("DEBUG: Found auth_send_verification_email. Calling...")
+                    f_verify(res$user, token = v_token)
+                  }
+                }
+              }
+            },
+            error = function(e) message("Error in registration notifications: ", e$message)
+          )
+
+          output$reg_msg <- renderUI(div(class = "alert alert-success mt-3", tags$b("Registro exitoso."), br(), "Revisa tu correo para activar tu cuenta."))
+          showNotification("Registro exitoso. Revisa tu correo.", type = "message", duration = 10)
+          showModal(modalDialog(title = "Verifica tu correo", p("Hemos enviado un enlace a tu correo. Debes hacer clic en él para activar tu cuenta."), easyClose = TRUE, footer = modalButton("Cerrar")))
+          subview("login")
         },
         error = function(e) {
-          message("FATAL Error in registration email triggers: ", e$message)
+          message("FATAL Error in btn_do_register: ", e$message)
+          showNotification(paste("Error en el registro:", e$message), type = "error")
+          output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Error interno en el servidor."))
         }
       )
-
-      output$reg_msg <- renderUI(div(class = "alert alert-success mt-3", tags$b("Registro exitoso."), br(), "Revisa tu correo para activar tu cuenta."))
-      showNotification("Registro exitoso. Revisa tu correo.", type = "message", duration = 10)
-      showModal(modalDialog(title = "Verifica tu correo", p("Hemos enviado un enlace a tu correo. Debes hacer clic en él para activar tu cuenta."), easyClose = TRUE, footer = modalButton("Cerrar")))
-      subview("login")
     })
 
     observeEvent(input$btn_send_reset, {
@@ -1589,84 +1588,75 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     })
 
     # ----------------- Panel Admin (tabla + CSV) -----------------
-    output$users_tbl <- renderDT({
+    # Reactive data for the admin table to ensure indexing consistency
+    admin_users_df <- reactive({
       users_trigger() # Dependency for manual refresh
       u <- user_reactive()
-      if (is.null(u)) {
-        return(NULL)
-      }
+      if (is.null(u)) return(NULL)
       is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
-      if (!is_super && !db_is_admin(u)) {
-        return(NULL)
-      }
-      con <- NULL
+      if (!is_super && !db_is_admin(u)) return(NULL)
+      
       df <- data.frame()
-      try(
-        {
+      tryCatch({
           con <- pool_init()
           on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
           df <- DBI::dbGetQuery(con, "
-          select username, email, name, country, phone, created_at, active,
-                 membership_active, membership_expires_at, trial_expires_at,
-                 stripe_customer_id, stripe_subscription_id,
-                 referral_code, referral_wallet
-          from users order by created_at desc
-        ")
-        },
-        silent = TRUE
-      )
-
-      # Calculate Vigencia (Days Remaining)
-      if (nrow(df) > 0) {
-        now_ts <- Sys.time()
-        df$Vigencia <- sapply(seq_len(nrow(df)), function(i) {
-          is_active <- isTRUE(df$membership_active[i])
-          mem_exp <- df$membership_expires_at[i]
-          tri_exp <- df$trial_expires_at[i]
-
-          # Convert to POSIXct if chars (depende del driver)
-          # PostgreSQL usually returns POSIXct or character
-
-          # Logic:
-          if (is_active) {
-            # Active Member
-            if (!is.na(mem_exp) && nzchar(as.character(mem_exp))) {
-              # Calculate diff
-              # Handle potential format issues
-              exp_date <- tryCatch(as.POSIXct(mem_exp), error = function(e) NA)
-              if (!is.na(exp_date)) {
-                days <- difftime(exp_date, now_ts, units = "days")
-                d <- ceiling(as.numeric(days))
-                if (d < 0) {
-                  return(paste0("Vencido (", d, " días)"))
+            select id, username, email, name, country, phone, created_at, active,
+                   membership_active, membership_expires_at, trial_expires_at,
+                   stripe_customer_id, stripe_subscription_id,
+                   referral_code, referral_wallet
+            from users order by created_at desc
+          ")
+          
+          # Calculate Vigencia (Days Remaining)
+          if (nrow(df) > 0) {
+            now_ts <- Sys.time()
+            df$Vigencia <- sapply(seq_len(nrow(df)), function(i) {
+              is_active <- isTRUE(df$membership_active[i])
+              mem_exp <- df$membership_expires_at[i]
+              tri_exp <- df$trial_expires_at[i]
+              if (is_active) {
+                if (!is.na(mem_exp) && nzchar(as.character(mem_exp))) {
+                  exp_date <- tryCatch(as.POSIXct(mem_exp), error = function(e) NA)
+                  if (!is.na(exp_date)) {
+                    days <- difftime(exp_date, now_ts, units = "days")
+                    d <- ceiling(as.numeric(days))
+                    return(if (d < 0) paste0("Vencido (", d, " días)") else paste0(d, " días"))
+                  }
                 }
-                return(paste0(d, " días"))
+                return("Activa (Indef/Auto)")
+              } else {
+                if (!is.na(tri_exp) && nzchar(as.character(tri_exp))) {
+                  exp_date <- tryCatch(as.POSIXct(tri_exp), error = function(e) NA)
+                  if (!is.na(exp_date)) {
+                    days <- difftime(exp_date, now_ts, units = "days")
+                    d <- ceiling(as.numeric(days))
+                    return(if (d < 0) paste0("Prueba Vencida (", d, " días)") else paste0("Prueba: ", d, " días"))
+                  }
+                }
+                return("Sin acceso")
               }
-            }
-            # If active but no date (Stripe auto-renew or manual without date)
-            return("Activa (Indef/Auto)")
+            })
           } else {
-            # Trial / Inactive
-            if (!is.na(tri_exp) && nzchar(as.character(tri_exp))) {
-              # Trial format might be Date
-              exp_date <- tryCatch(as.POSIXct(tri_exp), error = function(e) NA)
-              if (!is.na(exp_date)) {
-                days <- difftime(exp_date, now_ts, units = "days")
-                d <- ceiling(as.numeric(days))
-                if (d < 0) {
-                  return(paste0("Prueba Vencida (", d, " días)"))
-                }
-                return(paste0("Prueba: ", d, " días"))
-              }
-            }
-            return("Sin acceso")
+            df$Vigencia <- character()
           }
-        })
-      } else {
-        df$Vigencia <- character()
-      }
+        },
+        error = function(e) {
+          message("Error fetching admin user data: ", e$message)
+          df <<- data.frame()
+        }
+      )
+      df
+    })
 
-      DT::datatable(df, rownames = FALSE, options = list(pageLength = 15, scrollX = TRUE))
+    output$users_tbl <- renderDT({
+      df <- admin_users_df()
+      if (is.null(df) || nrow(df) == 0) return(NULL)
+      
+      # Prepare display data (remove id from view but keep it for indexing if needed via DT)
+      display_df <- df[, setdiff(names(df), "id")]
+      
+      DT::datatable(display_df, rownames = FALSE, options = list(pageLength = 15, scrollX = TRUE))
     })
 
     # ----------------- Admin: Activar Membresía Manual -----------------
@@ -1692,71 +1682,64 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$adm_confirm_activate, {
       removeModal()
-      rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
-
-      u <- user_reactive()
-      con <- NULL
-      # Fetch both ID and Email
-      user_data <- data.frame(id = integer(), email = character(), username = character())
-      try(
+      tryCatch(
         {
-          con <- pool_init()
-          on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
-          # Same order as renderDT
-          user_data <- DBI::dbGetQuery(con, "select id, email, username from users order by created_at desc")
-          user_data <- user_data[rows, , drop = FALSE]
-        },
-        silent = TRUE
-      )
+          rows <- input$users_tbl_rows_selected
+          df <- admin_users_df()
+          if (is.null(rows) || is.null(df) || nrow(df) == 0) return()
 
-      days_duration <- as.integer(input$adm_act_duration)
-      send_email <- isTRUE(input$adm_act_email)
+          user_data <- df[rows, , drop = FALSE]
+          days_duration <- as.integer(input$adm_act_duration)
+          send_email <- isTRUE(input$adm_act_email)
 
-      cnt <- 0
-      emails_sent <- 0
+          cnt <- 0
+          emails_sent <- 0
 
-      for (i in seq_len(nrow(user_data))) {
-        uid <- user_data$id[i]
-        uemail <- user_data$email[i]
-        uname <- user_data$username[i]
+          for (i in seq_len(nrow(user_data))) {
+            uid <- user_data$id[i]
+            uemail <- user_data$email[i]
+            uname <- user_data$name[i] %||% user_data$username[i]
 
-        if (!is.na(uid)) {
-          try({
-            db_manual_activate(uid, days_duration)
-            cnt <- cnt + 1
+            if (!is.na(uid)) {
+              tryCatch({
+                db_manual_activate(uid, days_duration)
+                cnt <- cnt + 1
 
-            if (send_email && !is.na(uemail) && nzchar(uemail)) {
-              new_expiry <- Sys.Date() + days_duration
-              subj <- "Membresía Activada - PugaX Trade"
-              body <- paste0(
-                "Hola ", uname, ",\n\n",
-                "Tu membresía ha sido activada o extendida manualmente por el administrador.\n",
-                "Tu nuevo acceso es válido hasta: ", new_expiry, "\n\n",
-                "Accede aquí: https://app.pugaxtrade.com\n\n",
-                "¡Disfruta de PugaX Trade!\n"
-              )
-              if (isTRUE(auth_send_generic_email(uemail, subj, body)$ok)) {
-                emails_sent <- emails_sent + 1
-              }
+                if (send_email && !is.na(uemail) && nzchar(uemail)) {
+                  new_expiry <- Sys.Date() + days_duration
+                  subj <- "Membresía Activada - PugaX Trade"
+                  body <- paste0(
+                    "Hola ", uname, ",\n\n",
+                    "Tu membresía ha sido activada o extendida manualmente por el administrador.\n",
+                    "Tu nuevo acceso es válido hasta: ", new_expiry, "\n\n",
+                    "Accede aquí: https://app.pugaxtrade.com\n\n",
+                    "¡Disfruta de PugaX Trade!\n"
+                  )
+                  f_generic <- get0("auth_send_generic_email", envir = .GlobalEnv, inherits = TRUE)
+                  if (is.function(f_generic)) {
+                    res_email <- f_generic(uemail, subj, body)
+                    if (isTRUE(res_email$ok)) emails_sent <- emails_sent + 1
+                  }
+                }
+              }, error = function(e) message("Error activating user ", uid, ": ", e$message))
             }
-          })
+          }
+
+          # Admin Notification
+          f_admin_action <- get0("auth_notify_admin_action", envir = .GlobalEnv, inherits = TRUE)
+          if (is.function(f_admin_action)) {
+            details <- paste0("Usuarios afectados: ", cnt, "\nDuración: ", days_duration, " días.\nCorreos: ", emails_sent)
+            tryCatch(f_admin_action("Activación Manual", details), error = function(e) NULL)
+          }
+
+          showNotification(sprintf("Activado para %d usuarios. Correos enviados: %d.", cnt, emails_sent), type = "message")
+          users_trigger(users_trigger() + 1)
+        },
+        error = function(e) {
+          message("FATAL Error in adm_confirm_activate: ", e$message)
+          showNotification(paste("Error crítico:", e$message), type = "error")
         }
-      }
-
-      # Admin Notification Logic
-      if (exists("auth_notify_admin_action")) {
-        details <- paste0(
-          "Usuarios afectados: ", cnt, "\n",
-          "Duración otorgada: ", days_duration, " días.\n",
-          "Correos enviados a usuarios: ", emails_sent
-        )
-        try(auth_notify_admin_action("Activación Manual de Membresía", details), silent = TRUE)
-      }
-
-      showNotification(sprintf("Activado para %d usuarios. Correos enviados: %d.", cnt, emails_sent), type = "message")
+      )
     })
 
     # ----------------- Admin: Enviar Correo -----------------
@@ -1810,7 +1793,6 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         updateTextInput(session, "adm_email_subj", value = "Desbloquea tu acceso completo - PugaX Trade")
         updateTextAreaInput(session, "adm_email_body", value = paste0(
           "Hola {{USERNAME}},\n\n",
-          "Te invitamos a adquirir tu membresía para acceder a todos los análisis exclusivos de PugaX Trade.\n\n",
           "Para activar tu cuenta, ingresa a la App y ve a la sección 'Membresía' para Renovar o Pagar.\n\n",
           "Link App: https://app.pugaxtrade.com\n\n",
           "Saludos,\nEquipo PugaX"
@@ -1820,101 +1802,45 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$adm_confirm_email, {
       removeModal()
-      rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
-      subj <- input$adm_email_subj
-      body_tmpl <- input$adm_email_body
-      if (!nzchar(subj) || !nzchar(body_tmpl)) {
-        showNotification("Asunto y mensaje son obligatorios.", type = "error")
-        return()
-      }
-
-      u <- user_reactive()
-      con <- NULL
-      # Fetch sufficient data to generate checkout sessions (id, email, username)
-      user_data <- data.frame()
-      try(
+      tryCatch(
         {
-          con <- pool_init()
-          on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
-          user_data <- DBI::dbGetQuery(con, "select id, email, username from users order by created_at desc")
-          user_data <- user_data[rows, , drop = FALSE]
-        },
-        silent = TRUE
-      )
+          rows <- input$users_tbl_rows_selected
+          df <- admin_users_df()
+          if (is.null(rows) || is.null(df) || nrow(df) == 0) return()
 
-      cnt <- 0
-      has_stripe_tag <- grepl("{{STRIPE_URL}}", body_tmpl, fixed = TRUE)
-
-      withProgress(message = "Enviando correos...", value = 0, {
-        n <- nrow(user_data)
-        for (i in seq_len(n)) {
-          incProgress(1 / n)
-
-          dest_email <- user_data$email[i]
-          dest_user <- user_data$username[i]
-          if (is.na(dest_email) || !nzchar(dest_email)) next
-
-          # Personalize body
-          final_body <- body_tmpl
-          # Replace {{USERNAME}} if present (or just a generic 'Hola username')
-          # Simple replace for explicit tag:
-          if (grepl("{{USERNAME}}", final_body, fixed = TRUE)) {
-            final_body <- sub("{{USERNAME}}", dest_user, final_body, fixed = TRUE)
+          subj <- input$adm_email_subj
+          body_tmpl <- input$adm_email_body
+          if (!nzchar(subj) || !nzchar(body_tmpl)) {
+            showNotification("Asunto y mensaje son obligatorios.", type = "error")
+            return()
           }
 
-          if (has_stripe_tag) {
-            # Generate unique session
-            # Construct user_row list expected by auth_create_checkout_session
-            ur <- list(
-              id = list(user_data$id[i]),
-              email = list(user_data$email[i]),
-              username = list(user_data$username[i])
-            )
-            # Try creating session
-            # Verify auth_create_checkout_session exists
-            if (exists("auth_create_checkout_session")) {
-              sres <- try(auth_create_checkout_session(ur), silent = TRUE)
-              if (!inherits(sres, "try-error") && isTRUE(sres$ok)) {
-                final_body <- sub("{{STRIPE_URL}}", sres$url, final_body, fixed = TRUE)
-              } else {
-                # Fallback or error indication in email? Better not send broken link.
-                final_body <- sub("{{STRIPE_URL}}", "(Error generando enlace de pago. Contacta al soporte.)", final_body, fixed = TRUE)
+          user_data <- df[rows, , drop = FALSE]
+          emails_sent <- 0
+
+          for (i in seq_len(nrow(user_data))) {
+            uemail <- user_data$email[i]
+            uname <- user_data$name[i] %||% user_data$username[i]
+
+            if (!is.na(uemail) && nzchar(uemail)) {
+              final_body <- gsub("{{USERNAME}}", uname, body_tmpl, fixed = TRUE)
+              f_generic <- get0("auth_send_generic_email", envir = .GlobalEnv, inherits = TRUE)
+              if (is.function(f_generic)) {
+                tryCatch({
+                  res_email <- f_generic(uemail, subj, final_body)
+                  if (isTRUE(res_email$ok)) emails_sent <- emails_sent + 1
+                }, error = function(e) message("Error sending email to ", uemail, ": ", e$message))
               }
-            } else {
-              final_body <- sub("{{STRIPE_URL}}", "(Sistema de pagos no disponible)", final_body, fixed = TRUE)
             }
           }
 
-          # Append App URL to generic/custom emails
-          final_body <- paste0(final_body, "\n\nAccede a la App: https://app.pugaxtrade.com")
-
-          tryCatch(
-            {
-              res <- auth_send_generic_email(dest_email, subj, final_body)
-              if (isTRUE(res$ok)) cnt <- cnt + 1
-            },
-            error = function(e) {
-              # Log error but don't stop loop
-              message(paste("Error sending email to", dest_email, ":", e$message))
-            }
-          )
+          showNotification(sprintf("Correo enviado a %d usuario(s).", emails_sent), type = "message")
+        },
+        error = function(e) {
+          message("FATAL Error in adm_confirm_email: ", e$message)
+          showNotification(paste("Error crítico:", e$message), type = "error")
         }
-      })
-
-      # Admin Notification Logic
-      if (exists("auth_notify_admin_action")) {
-        details <- paste0(
-          "Asunto: ", subj, "\n",
-          "Total correos enviados: ", cnt, "\n",
-          "Plantilla usada: ", if (nzchar(input$adm_email_tmpl)) input$adm_email_tmpl else "(Personalizado)"
-        )
-        try(auth_notify_admin_action("Envío de Correo Masivo/Individual", details), silent = TRUE)
-      }
-
-      showNotification(sprintf("Correo enviado a %d usuario(s).", cnt), type = "message")
+      )
     })
 
     # ----------------- Admin: Desactivar Membresía Manual -----------------
@@ -1944,82 +1870,61 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$adm_confirm_deactivate, {
       removeModal()
-      rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
-
-      u <- user_reactive()
-      # Must be admin/super
-      is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
-      if (!is_super && !db_is_admin(u)) {
-        return()
-      }
-
-      # Robust Error Handling
       tryCatch(
         {
-          con <- NULL
-          user_data <- data.frame()
+          rows <- input$users_tbl_rows_selected
+          df <- admin_users_df()
+          if (is.null(rows) || is.null(df) || nrow(df) == 0) return()
 
-          con <- pool_init()
-          on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
-
-          user_data <- DBI::dbGetQuery(con, "select id, email, username from users order by created_at desc")
-          targets <- user_data[rows, , drop = FALSE]
-
+          user_data <- df[rows, , drop = FALSE]
           send_email <- isTRUE(input$adm_deact_email)
+
           cnt <- 0
           emails_sent <- 0
 
-          for (i in seq_len(nrow(targets))) {
-            uid <- targets$id[i]
-            uemail <- targets$email[i]
-            uname <- targets$username[i]
+          for (i in seq_len(nrow(user_data))) {
+            uid <- user_data$id[i]
+            uemail <- user_data$email[i]
+            uname <- user_data$name[i] %||% user_data$username[i]
 
             if (!is.na(uid)) {
-              try(
-                {
-                  db_manual_deactivate(uid)
-                  cnt <- cnt + 1
+              tryCatch({
+                db_manual_deactivate(uid)
+                cnt <- cnt + 1
 
-                  if (send_email && !is.na(uemail) && nzchar(uemail)) {
-                    subj <- "Membresía Desactivada - PugaX Trade"
-                    body <- paste0(
-                      "Hola ", uname, ",\n\n",
-                      "Tu membresía ha sido desactivada manualmente por el administrador.\n",
-                      "Ya no tienes acceso premium a la plataforma.\n\n",
-                      "Si deseas reactivarla, por favor contáctanos o ingresa a renovar.\n\n",
-                      "PugaX App: https://app.pugaxtrade.com\n\n",
-                      "Saludos,\nEquipo PugaX"
-                    )
-                    if (isTRUE(auth_send_generic_email(uemail, subj, body)$ok)) {
-                      emails_sent <- emails_sent + 1
-                    }
+                if (send_email && !is.na(uemail) && nzchar(uemail)) {
+                  subj <- "Membresía Desactivada - PugaX Trade"
+                  body <- paste0(
+                    "Hola ", uname, ",\n\n",
+                    "Tu membresía ha sido desactivada manualmente por el administrador.\n",
+                    "Ya no tienes acceso premium a la plataforma.\n\n",
+                    "Si deseas reactivarla, por favor contáctanos o ingresa a renovar.\n\n",
+                    "PugaX App: https://app.pugaxtrade.com\n\n",
+                    "Saludos,\nEquipo PugaX"
+                  )
+                  f_generic <- get0("auth_send_generic_email", envir = .GlobalEnv, inherits = TRUE)
+                  if (is.function(f_generic)) {
+                    res_email <- f_generic(uemail, subj, body)
+                    if (isTRUE(res_email$ok)) emails_sent <- emails_sent + 1
                   }
-                },
-                silent = TRUE
-              )
+                }
+              }, error = function(e) message("Error deactivating user ", uid, ": ", e$message))
             }
           }
 
-          # Trigger Table Refresh
-          new_val <- users_trigger() + 1
-          users_trigger(new_val)
-
-          # Admin Notification Logic
-          if (exists("auth_notify_admin_action")) {
-            details <- paste0(
-              "Usuarios afectados: ", cnt, "\n",
-              "Correos enviados a usuarios: ", emails_sent
-            )
-            try(auth_notify_admin_action("Desactivación Manual de Membresía", details), silent = TRUE)
+          # Admin Notification
+          f_admin_action <- get0("auth_notify_admin_action", envir = .GlobalEnv, inherits = TRUE)
+          if (is.function(f_admin_action)) {
+            details <- paste0("Usuarios afectados: ", cnt, "\nCorreos: ", emails_sent)
+            tryCatch(f_admin_action("Desactivación Manual", details), error = function(e) NULL)
           }
 
           showNotification(sprintf("Membresía desactivada para %d usuario(s). Correos enviados: %d.", cnt, emails_sent), type = "message")
+          users_trigger(users_trigger() + 1)
         },
         error = function(e) {
-          showNotification(paste("Error:", e$message), type = "error", duration = 15)
+          message("FATAL Error in adm_confirm_deactivate: ", e$message)
+          showNotification(paste("Error crítico:", e$message), type = "error")
         }
       )
     })
@@ -2076,74 +1981,50 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
     observeEvent(input$adm_confirm_delete, {
       removeModal()
-      rows <- input$users_tbl_rows_selected
-      if (is.null(rows)) {
-        return()
-      }
-
-      u <- user_reactive()
-      # Must be admin/super
-      is_super <- !is.null(u$username) && u$username[[1]] == "pedrobp86"
-      if (!is_super && !db_is_admin(u)) {
-        return()
-      }
-
-      con <- NULL
-      # Fetch IDs, emails, names
-      user_data <- data.frame()
-      try(
+      tryCatch(
         {
-          con <- pool_init()
-          on.exit(try(poolReturn(con), silent = TRUE), add = TRUE)
-          user_data <- DBI::dbGetQuery(con, "select id, email, name from users order by created_at desc")
-          user_data <- user_data[rows, , drop = FALSE]
+          rows <- input$users_tbl_rows_selected
+          df <- admin_users_df()
+          if (is.null(rows) || is.null(df) || nrow(df) == 0) return()
+
+          user_data <- df[rows, , drop = FALSE]
+          cnt <- 0
+          emails_sent <- 0
+
+          for (i in seq_len(nrow(user_data))) {
+            uid <- user_data$id[i]
+            uemail <- user_data$email[i]
+            uname <- user_data$name[i] %||% user_data$username[i]
+
+            if (!is.na(uid)) {
+              # 1. Send Notification Email (before deletion)
+              tryCatch({
+                if (!is.na(uemail) && nzchar(uemail)) {
+                  f_del_email <- get0("auth_send_account_deleted_email", envir = .GlobalEnv, inherits = TRUE)
+                  if (is.function(f_del_email)) {
+                    res_email <- f_del_email(uemail, uname)
+                    if (isTRUE(res_email$ok)) emails_sent <- emails_sent + 1
+                  }
+                }
+              }, error = function(e) message("Error sending deletion notification to ", uemail, ": ", e$message))
+
+              # 2. Delete User from DB
+              tryCatch({
+                if (isTRUE(db_delete_user(uid))) {
+                  cnt <- cnt + 1
+                }
+              }, error = function(e) message("Error deleting user ID ", uid, ": ", e$message))
+            }
+          }
+
+          showNotification(sprintf("%d usuario(s) eliminado(s). (%d correos enviados)", cnt, emails_sent), type = "message", duration = 8)
+          users_trigger(users_trigger() + 1)
         },
-        silent = TRUE
+        error = function(e) {
+          message("FATAL Error in adm_confirm_delete: ", e$message)
+          showNotification(paste("Error crítico:", e$message), type = "error")
+        }
       )
-
-      cnt <- 0
-      emails_sent <- 0
-
-      for (i in seq_len(nrow(user_data))) {
-        uid <- user_data$id[i]
-        uemail <- user_data$email[i]
-        uname <- user_data$name[i]
-
-        # 1. Send Notification Email
-        if (!is.na(uemail) && nzchar(uemail)) {
-          try(
-            {
-              if (exists("auth_send_account_deleted_email")) {
-                auth_send_account_deleted_email(uemail, uname)
-                emails_sent <- emails_sent + 1
-              }
-
-
-              # Notify Admin of account deletion
-              # TEMPORARY DEBUG: Commenting out admin email to verify if this is the crash source
-              # if (exists("auth_notify_admin_account_deleted")) {
-              #   try(auth_notify_admin_account_deleted(uid, uname, uemail), silent = TRUE)
-              # }
-            },
-            silent = TRUE
-          )
-        }
-
-        # 2. Delete User from DB
-        if (isTRUE(try(db_delete_user(uid), silent = TRUE))) {
-          cnt <- cnt + 1
-        }
-      }
-
-
-      # Mensaje de éxito visible
-      showNotification(sprintf("%d usuario(s) eliminado(s). (%d correos enviados)", cnt, emails_sent), type = "message", duration = 8)
-      showModal(modalDialog(
-        title = "Usuarios Eliminados",
-        div(class = "text-success", paste0("Se han eliminado ", cnt, " usuario(s) correctamente y se les ha enviado un correo de notificación.")),
-        easyClose = TRUE,
-        footer = modalButton("Cerrar")
-      ))
     })
 
     # ----------------- Descargar usuarios (Admin) -----------------
