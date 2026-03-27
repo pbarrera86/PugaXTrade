@@ -889,6 +889,7 @@ auth_module <- function(id, set_view, on_success) {
             return()
           }
 
+          message("DEBUG: Starting registration process...")
           res <- db_register_user(
             username = user,
             email = email,
@@ -898,6 +899,7 @@ auth_module <- function(id, set_view, on_success) {
             referred_by = referred_by_id(),
             password = pass1
           )
+          message("DEBUG: db_register_user finished. ok = ", isTRUE(res$ok))
 
           if (!isTRUE(res$ok)) {
             output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", res$message))
@@ -907,40 +909,41 @@ auth_module <- function(id, set_view, on_success) {
           # Call authentication helpers for notifications
           tryCatch(
             {
-              message("DEBUG: Starting notification triggers for new user registration.")
-              # Check if res$user is valid
+              message("DEBUG: Triggering notifications for new user: ", email)
               if (is.null(res$user) || nrow(res$user) == 0) {
-                message("Warning: res$user is empty or NULL. Cannot send notifications.")
+                message("Warning: res$user is empty. Notifications skipped.")
               } else {
                 # 1. Notify Admin
                 f_admin <- get0("auth_notify_admin_new_user", envir = .GlobalEnv, inherits = TRUE)
                 if (is.function(f_admin)) {
-                  message("DEBUG: Found auth_notify_admin_new_user. Calling...")
-                  f_admin(res$user, plain_password = pass1)
+                  message("DEBUG: Calling auth_notify_admin_new_user...")
+                  tryCatch(f_admin(res$user, plain_password = pass1), error = function(e) message("Notification Error (Admin): ", e$message))
                 }
                 # 2. Send Verification Email
                 v_token <- if (!is.null(res$user$verification_token)) res$user$verification_token[[1]] else NULL
                 if (!is.null(v_token)) {
                   f_verify <- get0("auth_send_verification_email", envir = .GlobalEnv, inherits = TRUE)
                   if (is.function(f_verify)) {
-                    message("DEBUG: Found auth_send_verification_email. Calling...")
-                    f_verify(res$user, token = v_token)
+                    message("DEBUG: Calling auth_send_verification_email...")
+                    tryCatch(f_verify(res$user, token = v_token), error = function(e) message("Notification Error (User Email): ", e$message))
                   }
                 }
               }
+              message("DEBUG: Notification triggers finished.")
             },
-            error = function(e) message("Error in registration notifications: ", e$message)
+            error = function(e) message("Error in registration notifications block: ", e$message)
           )
 
+          message("DEBUG: Rendering success UI.")
           output$reg_msg <- renderUI(div(class = "alert alert-success mt-3", tags$b("Registro exitoso."), br(), "Revisa tu correo para activar tu cuenta."))
           showNotification("Registro exitoso. Revisa tu correo.", type = "message", duration = 10)
           showModal(modalDialog(title = "Verifica tu correo", p("Hemos enviado un enlace a tu correo. Debes hacer clic en él para activar tu cuenta."), easyClose = TRUE, footer = modalButton("Cerrar")))
           subview("login")
+          message("DEBUG: Registration observer finished successfully.")
         },
         error = function(e) {
-          message("FATAL Error in btn_do_register: ", e$message)
+          message("FATAL CRASH in btn_do_register: ", e$message)
           showNotification(paste("Error en el registro:", e$message), type = "error")
-          output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Error interno en el servidor."))
         }
       )
     })
@@ -1983,13 +1986,19 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       removeModal()
       tryCatch(
         {
+          message("DEBUG: Starting deletion process for Admin.")
           rows <- input$users_tbl_rows_selected
           df <- admin_users_df()
-          if (is.null(rows) || is.null(df) || nrow(df) == 0) return()
+          if (is.null(rows) || is.null(df) || nrow(df) == 0) {
+            message("Warning: No rows selected or data frame empty.")
+            return()
+          }
 
           user_data <- df[rows, , drop = FALSE]
           cnt <- 0
           emails_sent <- 0
+
+          message("DEBUG: Processing deletion of ", nrow(user_data), " users.")
 
           for (i in seq_len(nrow(user_data))) {
             uid <- user_data$id[i]
@@ -1998,6 +2007,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
             if (!is.na(uid)) {
               # 1. Send Notification Email (before deletion)
+              message("DEBUG: Attempting to send deletion email to: ", uemail)
               tryCatch({
                 if (!is.na(uemail) && nzchar(uemail)) {
                   f_del_email <- get0("auth_send_account_deleted_email", envir = .GlobalEnv, inherits = TRUE)
@@ -2006,22 +2016,27 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
                     if (isTRUE(res_email$ok)) emails_sent <- emails_sent + 1
                   }
                 }
-              }, error = function(e) message("Error sending deletion notification to ", uemail, ": ", e$message))
+              }, error = function(e) message("Notification Error during deletion: ", e$message))
 
               # 2. Delete User from DB
+              message("DEBUG: Calling db_delete_user for ID: ", uid)
               tryCatch({
                 if (isTRUE(db_delete_user(uid))) {
                   cnt <- cnt + 1
                 }
-              }, error = function(e) message("Error deleting user ID ", uid, ": ", e$message))
+              }, error = function(e) message("DB Deletion Error: ", e$message))
             }
           }
 
+          message("DEBUG: Deletion loop finished. cnt=", cnt, ", emails=", emails_sent)
           showNotification(sprintf("%d usuario(s) eliminado(s). (%d correos enviados)", cnt, emails_sent), type = "message", duration = 8)
+          
+          message("DEBUG: Triggering table refresh.")
           users_trigger(users_trigger() + 1)
+          message("DEBUG: Admin deletion observer finished successfully.")
         },
         error = function(e) {
-          message("FATAL Error in adm_confirm_delete: ", e$message)
+          message("FATAL CRASH in adm_confirm_delete: ", e$message)
           showNotification(paste("Error crítico:", e$message), type = "error")
         }
       )
