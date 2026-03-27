@@ -1,3 +1,19 @@
+# ── PugaX Trade — docker-compose.yml ─────────────────────────────────────────
+services:
+  pugaxtrade:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pugaxtrade:latest
+    container_name: pugaxtrade_app
+    restart: unless-stopped
+
+    ports:
+      - "3838:3838"
+
+    networks:
+      - dokploy-network
+
     environment:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
 
@@ -18,8 +34,22 @@
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
-      ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}   # <-- CORREGIDO AQUI (Izquierda es el nombre dentro de Docker)
+      SMTP_ADMIN: ${SMTP_ADMIN_EMAIL}
 
     volumes:
-      - /root/apps/pugaxtrade:/srv/shiny-server  # <-- LÍNEA MAGICA AGREGADA AQUI
+      - /root/apps/pugaxtrade:/srv/shiny-server
       - shiny_logs:/var/log/shiny-server
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H 'Host: localhost' http://127.0.0.1:3838/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+volumes:
+  shiny_logs:
+
+networks:
+  dokploy-network:
+    external: true
