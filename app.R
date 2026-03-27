@@ -904,24 +904,39 @@ auth_module <- function(id, set_view, on_success) {
       # Call authentication helpers for notifications
       tryCatch(
         {
-          # 1. Notify Admin
-          f_admin <- get0("auth_notify_admin_new_user", envir = .GlobalEnv, inherits = TRUE)
-          if (is.function(f_admin)) {
-            f_admin(res$user, plain_password = pass1)
+          message("DEBUG: Starting notification triggers for new user registration.")
+          
+          # Check if res$user is valid
+          if (is.null(res$user) || nrow(res$user) == 0) {
+            message("Warning: res$user is empty or NULL. Cannot send notifications.")
           } else {
-            message("Warning: auth_notify_admin_new_user not found.")
-          }
+             # 1. Notify Admin
+             f_admin <- get0("auth_notify_admin_new_user", envir = .GlobalEnv, inherits = TRUE)
+             if (is.function(f_admin)) {
+               message("DEBUG: Found auth_notify_admin_new_user. Calling...")
+               f_admin(res$user, plain_password = pass1)
+             } else {
+               message("Warning: auth_notify_admin_new_user not found.")
+             }
 
-          # 2. Send Verification Email
-          f_verify <- get0("auth_send_verification_email", envir = .GlobalEnv, inherits = TRUE)
-          if (is.function(f_verify)) {
-            f_verify(res$user, token = res$user$verification_token[[1]])
-          } else {
-            message("Warning: auth_send_verification_email not found.")
+             # 2. Send Verification Email
+             v_token <- if (!is.null(res$user$verification_token)) res$user$verification_token[[1]] else NULL
+             if (is.null(v_token)) {
+               message("Warning: verification_token missing from res$user.")
+             } else {
+               f_verify <- get0("auth_send_verification_email", envir = .GlobalEnv, inherits = TRUE)
+               if (is.function(f_verify)) {
+                 message("DEBUG: Found auth_send_verification_email. Calling...")
+                 f_verify(res$user, token = v_token)
+               } else {
+                 message("Warning: auth_send_verification_email not found.")
+               }
+             }
           }
+          message("DEBUG: Notification triggers completed (check above for any warnings).")
         },
         error = function(e) {
-          message("Execution Error in registration email triggers: ", e$message)
+          message("FATAL Error in registration email triggers: ", e$message)
         }
       )
 
