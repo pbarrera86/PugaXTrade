@@ -97,20 +97,22 @@ auth_build_reset_link <- function(token) {
   }
 
   # Basic diagnostic
-  message(sprintf("DEBUG: Initializing SMTP server %s:%s", cfg$host, cfg$port %||% 587))
+  h <- if (!is.null(cfg$host)) as.character(cfg$host) else "MISSING_HOST"
+  p <- if (!is.null(cfg$port)) as.character(cfg$port) else "587"
+  message("DEBUG: Initializing SMTP server: ", h, ":", p)
 
   tryCatch(
     {
       emayili::server(
-        host     = cfg$host,
-        port     = as.integer(cfg$port %||% 587),
+        host     = h,
+        port     = as.integer(p),
         username = cfg$user,
         password = cfg$pass,
         reuse    = FALSE
       )
     },
     error = function(e) {
-      message("SMTP Server Error: ", e$message)
+      message("SMTP Server Config Error: ", e$message)
       NULL
     }
   )
