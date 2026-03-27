@@ -45,8 +45,11 @@ suppressWarnings({
     })
   }
 
-  # Merge: Env vars override file
-  cfg <- modifyList(as.list(cfg_file), as.list(cfg_env))
+  # Merge: Env vars override file (manual merge to avoid dependency on utils::modifyList)
+  cfg <- as.list(cfg_file)
+  for (nm in names(cfg_env)) {
+    cfg[[nm]] <- cfg_env[[nm]]
+  }
   cfg
 }
 
