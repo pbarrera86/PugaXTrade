@@ -1,14 +1,18 @@
 #!/bin/bash
 set -e
 
-# entrypoint.sh - Forward environment variables to Shiny Server safely
+# entrypoint.sh - PugaX Trade — Gestión de Variables de Entorno y Servidor
 
-# Rebuild .Renviron with only app-related variables
-env | grep -E '^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_)' > /home/shiny/.Renviron || true
+# Re-construimos .Renviron con las variables críticas (Dokploy / Env)
+# Incluimos DB_URL, STRIPE, SMTP, y cualquier otra necesaria para la app
+echo "Configurando .Renviron..."
+env | grep -E '^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT)' > /srv/shiny-server/.Renviron || true
 
-# Ensure the shiny user owns the file
-chown shiny:shiny /home/shiny/.Renviron
-chmod 600 /home/shiny/.Renviron
+# Aseguramos que el usuario 'shiny' tenga acceso
+# En algunas bases de Docker /srv/shiny-server es el home de la app
+chown shiny:shiny /srv/shiny-server/.Renviron
+chmod 600 /srv/shiny-server/.Renviron
 
-# Start the Shiny Server process
+# Iniciamos el proceso del Shiny Server
+echo "Iniciando Shiny Server..."
 exec /usr/bin/shiny-server
