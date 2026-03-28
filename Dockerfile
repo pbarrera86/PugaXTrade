@@ -45,7 +45,9 @@ RUN R -e "install.packages(c( \
     'quantmod', \
     'TTR', \
     'openxlsx', \
-    'markdown' \
+    'markdown', \
+    'plotly', \
+    'htmltools' \
   ), repos='https://cloud.r-project.org', dependencies=TRUE)"
 
 # ── Shiny Server config ────────────────────────────────────────────────────────
