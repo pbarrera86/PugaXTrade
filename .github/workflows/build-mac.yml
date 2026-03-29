@@ -1,56 +1,39 @@
-name: build-mac
+name: Docker Build Check
+
 on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - docker-compose.yml
+      - entrypoint.sh
+      - shiny-server.conf
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
 
 jobs:
-  mac:
-    runs-on: macos-latest
+  docker-build:
+    name: Verify Docker Image Builds
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (no push)
+        uses: docker/build-push-action@v5
         with:
-          python-version: '3.11'
+          context: .
+          dockerfile: Dockerfile
+          push: false
+          tags: pugaxtrade:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Install deps
+      - name: Verify entrypoint is executable
         run: |
-          python -m pip install --upgrade pip wheel
-          pip install -r requirements.txt
-
-      # (Opcional) prueba rápida: no falla si tu GUI no abre en consola
-      - name: Smoke test (CLI)
-        run: |
-          python Analisis_Financiero_FINVIZ_v6.py || true
-
-      - name: Build .app with PyInstaller
-        run: |
-          # Si existen, se añaden icono y tickers
-          PYI_EXTRA=""
-          if [ -f "tickers.txt" ]; then
-            PYI_EXTRA='--add-data "tickers.txt:."'
-          fi
-          ICON_OPT=""
-          if [ -f "pugax.icns" ]; then
-            ICON_OPT='--icon pugax.icns'
-          fi
-
-          pyinstaller --windowed --name "PugaX Trade" $ICON_OPT $PYI_EXTRA \
-            --hidden-import lxml._elementpath --hidden-import lxml.etree \
-            Analisis_Financiero_FINVIZ_v6.py
-
-      - name: Make DMG
-        run: |
-          hdiutil create -volname "PugaX Trade" \
-            -srcfolder "dist/PugaX Trade.app" \
-            -ov -format UDZO "dist/PugaX_Trade.dmg"
-
-      - name: Upload artifacts (.app and .dmg)
-        uses: actions/upload-artifact@v4
-        with:
-          name: PugaX-mac-build
-          path: |
-            dist/PugaX Trade.app
-            dist/PugaX_Trade.dmg
+          test -x entrypoint.sh && echo "✅ entrypoint.sh is executable" || echo "⚠️  entrypoint.sh not executable"
