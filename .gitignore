@@ -7,3 +7,17 @@ smtp.yml
 .Rhistory
 .RData
 .Rproj.user/
+
+# Cache de análisis
+cache/
+
+# Archivos de debug y test locales
+debug_run.R
+reproduce_crash.R
+test_*.R
+verify_*.R
+rsconnect/
+check_rlang.R
+clean_cache.R
+schema.sql
+Documentacion_PugaxTrade.*
