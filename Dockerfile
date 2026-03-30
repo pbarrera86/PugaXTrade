@@ -1,7 +1,7 @@
 # ── PugaX Trade — Dockerfile ──────────────────────────────────────────────────
-# Base: Rocker Shiny (Ubuntu 22.04 + R 4.4 + shiny-server)
-# Versión pinada para builds reproducibles
-FROM rocker/shiny:4.4.2
+# Base: Rocker Shiny-Verse (Ubuntu 24.04 + R 4.4 + shiny-server + Tidyverse presintalado)
+# Esto soluciona de raíz cualquier conflicto con dependencias frágiles como stringi/ICU
+FROM rocker/shiny-verse:4.4.2
 
 # ── System dependencies ────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -31,24 +31,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalamos stringi desde código fuente para evitar el problema de libicu/libicui18n de Ubuntu.
-RUN R -e "install.packages('stringi', repos='https://cloud.r-project.org/', type='source')"
-
-# Usamos el repositorio de binarios de Posit (PPM) para Ubuntu
+# ── R packages ─────────────────────────────────────────────────────────────────
+# Descargamos del PPM de Noble sólo los paquetes extra que no vienen en shiny-verse.
+# Al quitar 'dependencies=TRUE' y dejar los paquetes base en paz, blindamos el sistema.
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
     install.packages(c( \
-    'shiny', \
     'shinyWidgets', \
     'shinyjs', \
     'DT', \
-    'bslib', \
     'thematic', \
-    'dplyr', \
-    'tidyr', \
-    'tibble', \
-    'stringr', \
-    'lubridate', \
-    'purrr', \
     'furrr', \
     'future', \
     'promises', \
@@ -56,21 +47,14 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'RPostgres', \
     'pool', \
     'sodium', \
-    'jsonlite', \
-    'httr', \
     'yaml', \
     'emayili', \
-    'rvest', \
-    'xml2', \
     'quantmod', \
     'TTR', \
     'openxlsx', \
     'markdown', \
-    'plotly', \
-    'htmltools', \
-    'rlang', \
-    'openssl' \
-  ), dependencies=TRUE)"
+    'plotly' \
+  ))"
 
 # ── Shiny Server config ────────────────────────────────────────────────────────
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
