@@ -31,6 +31,9 @@ export SHINY_LOG_STDERR=1
 mkdir -p /var/log/shiny-server
 chown shiny:shiny /var/log/shiny-server
 
+echo "Ejecutando migraciones de Base de Datos..."
+cd /srv/shiny-server/app && cp ../.Renviron .Renviron && Rscript db_init.R || true
+
 # Iniciamos el servidor en background y mostramos los logs de workers
 echo "Iniciando Shiny Server..."
 /usr/bin/shiny-server &
