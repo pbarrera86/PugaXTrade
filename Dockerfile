@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfribidi-dev \
     libcairo2-dev \
     libfontconfig1-dev \
+    libicu-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
