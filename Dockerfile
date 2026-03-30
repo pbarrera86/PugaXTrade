@@ -32,8 +32,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── R packages ─────────────────────────────────────────────────────────────────
-# Descargamos del PPM de Noble sólo los paquetes extra que no vienen en shiny-verse.
-# Al quitar 'dependencies=TRUE' y dejar los paquetes base en paz, blindamos el sistema.
+# PASO 1: Actualizar xfun PRIMERO en su propia capa.
+# Rocker shiny-verse trae una versión vieja de xfun que rompía emayili.
+# Al actualizarlo primero, garantizamos la versión correcta antes de que emayili lo use.
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
+    install.packages(c('xfun', 'knitr', 'rmarkdown'))"
+
+# PASO 2: Ahora sí instalar el resto de paquetes con xfun ya sano.
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
     install.packages(c( \
     'shinyWidgets', \
@@ -53,20 +58,17 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'TTR', \
     'openxlsx', \
     'markdown', \
-    'plotly', \
-    'xfun', \
-    'knitr', \
-    'rmarkdown', \
-    'htmltools' \
+    'plotly' \
   ))"
 
 # ── Shiny Server config ────────────────────────────────────────────────────────
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
 
-# ── Preparar directorio de la app (ahora el código VIVE dentro de la imagen) ──
-RUN mkdir -p /srv/shiny-server
-COPY . /srv/shiny-server
-RUN chown -R shiny:shiny /srv/shiny-server
+# ── Copiar el código de la app dentro de la imagen ────────────────────────────
+# La app vive en /srv/shiny-server/app — así Shiny Server la sirve como app directa
+# y no se mezcla con los sample-apps de Rocker ni con archivos de configuración.
+RUN mkdir -p /srv/shiny-server/app
+COPY --chown=shiny:shiny . /srv/shiny-server/app
 
 # ── Permisos de configuración ─────────────────────────────────────────────────
 RUN chown root:root /etc/shiny-server/shiny-server.conf \
