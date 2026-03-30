@@ -13,11 +13,16 @@ env | grep -E '^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT)' > 
 chown shiny:shiny /srv/shiny-server/.Renviron
 chmod 600 /srv/shiny-server/.Renviron
 
-# === FIX PARA VOLUMENES PERSISTENTES ===
-# Si Dokploy tiene un volumen montado, los paquetes pre-compilados en el build son ocultados.
-# Verificamos si stringi funciona. Si falla, lo reinstalamos en tiempo de ejecución.
-echo "Verificando dependencias críticas en tiempo de ejecución..."
-R -e "tryCatch(library(stringi), error = function(e) { message('stringi roto, reinstalando...'); install.packages('stringi', repos='https://packagemanager.posit.co/cran/__linux__/noble/latest') })"
+# === FIX PARA VOLUMENES PERSISTENTES O LIBRERÍAS FALTANTES ===
+# Si alguna librería compilada exige exactamente libicui18n.so.70 (versión de Ubuntu 22.04) 
+# y estamos en Ubuntu 24.04, lo inyectamos de forma nativa antes de arrancar.
+if [ ! -f "/usr/lib/x86_64-linux-gnu/libicui18n.so.70" ]; then
+    echo "Instalando librería antigua libicui18n.so.70 para retro-compatibilidad..."
+    curl -sO http://security.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb
+    dpkg -i libicu70_70.1-2_amd64.deb || true
+    rm -f libicu70_70.1-2_amd64.deb
+fi
+echo "Verificando librerias finalizado."
 
 # Exportamos la variable para que los workers devuelvan errores al log principal
 export SHINY_LOG_STDERR=1
