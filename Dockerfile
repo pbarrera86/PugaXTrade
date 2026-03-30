@@ -53,7 +53,11 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'TTR', \
     'openxlsx', \
     'markdown', \
-    'plotly' \
+    'plotly', \
+    'xfun', \
+    'knitr', \
+    'rmarkdown', \
+    'htmltools' \
   ))"
 
 # ── Shiny Server config ────────────────────────────────────────────────────────
