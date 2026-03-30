@@ -13,6 +13,16 @@ env | grep -E '^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT)' > 
 chown shiny:shiny /srv/shiny-server/.Renviron
 chmod 600 /srv/shiny-server/.Renviron
 
-# Iniciamos el proceso del Shiny Server
+# Exportamos la variable para que los workers devuelvan errores al log principal
+export SHINY_LOG_STDERR=1
+
+# Preparamos el directorio de logs
+mkdir -p /var/log/shiny-server
+chown shiny:shiny /var/log/shiny-server
+
+# Iniciamos el servidor en background y mostramos los logs de workers
 echo "Iniciando Shiny Server..."
-exec /usr/bin/shiny-server
+/usr/bin/shiny-server &
+sleep 2
+tail -qF /var/log/shiny-server/*.log
+wait
