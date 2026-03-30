@@ -63,9 +63,10 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
 # ── Shiny Server config ────────────────────────────────────────────────────────
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
 
-# ── Preparar directorio de la app (el código se monta desde Dokploy) ──────────
-RUN mkdir -p /srv/shiny-server \
-    && chown -R shiny:shiny /srv/shiny-server
+# ── Preparar directorio de la app (ahora el código VIVE dentro de la imagen) ──
+RUN mkdir -p /srv/shiny-server
+COPY . /srv/shiny-server
+RUN chown -R shiny:shiny /srv/shiny-server
 
 # ── Permisos de configuración ─────────────────────────────────────────────────
 RUN chown root:root /etc/shiny-server/shiny-server.conf \
