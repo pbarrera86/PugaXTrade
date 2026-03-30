@@ -33,8 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── R packages ─────────────────────────────────────────────────────────────────
 # Usamos un snapshot de fecha fija (2024-11-01) de PPM para garantizar que todos
-# los paquetes son mutuamente compatibles. La versión nueva de xfun eliminó xfun::attr()
-# que emayili necesita — el snapshot asegura una versión de xfun que aún la tiene.
+# los paquetes son mutuamente compatibles y estables en producción.
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/2024-11-01')); \
     install.packages(c( \
     'xfun', \
@@ -52,7 +51,6 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'pool', \
     'sodium', \
     'yaml', \
-    'emayili', \
     'quantmod', \
     'TTR', \
     'openxlsx', \
