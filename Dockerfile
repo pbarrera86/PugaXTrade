@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── R packages ─────────────────────────────────────────────────────────────────
 # Usamos un snapshot de fecha fija (2024-11-01) de PPM para garantizar que todos
 # los paquetes son mutuamente compatibles y estables en producción.
-RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/2024-11-01')); \
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
     install.packages(c( \
     'xfun', \
     'knitr', \
@@ -55,7 +55,13 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'TTR', \
     'openxlsx', \
     'markdown', \
-    'plotly' \
+    'plotly', \
+    'emayili', \
+    'httr', \
+    'rvest', \
+    'glue', \
+    'nanonext', \
+    'mirai' \
   ))"
 
 # ── Shiny Server config ────────────────────────────────────────────────────────
@@ -83,3 +89,4 @@ HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
   CMD curl -sf http://localhost:3838/ping.html > /dev/null || exit 1
 
 CMD ["/usr/local/bin/entrypoint.sh"]
+
