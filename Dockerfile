@@ -31,9 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ── R packages ─────────────────────────────────────────────────────────────────
-# Usamos el repositorio de binarios de Posit (PPM) para Ubuntu Noble (24.04)
-# Esto acelera el build al evitar compilar desde código fuente
+# Instalamos stringi desde código fuente para evitar el problema de libicu/libicui18n de Ubuntu.
+RUN R -e "install.packages('stringi', repos='https://cloud.r-project.org/', type='source')"
+
+# Usamos el repositorio de binarios de Posit (PPM) para Ubuntu
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
     install.packages(c( \
     'shiny', \
