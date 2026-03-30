@@ -32,15 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── R packages ─────────────────────────────────────────────────────────────────
-# PASO 1: Actualizar xfun PRIMERO en su propia capa.
-# Rocker shiny-verse trae una versión vieja de xfun que rompía emayili.
-# Al actualizarlo primero, garantizamos la versión correcta antes de que emayili lo use.
-RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
-    install.packages(c('xfun', 'knitr', 'rmarkdown'))"
-
-# PASO 2: Ahora sí instalar el resto de paquetes con xfun ya sano.
-RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
+# Usamos un snapshot de fecha fija (2024-11-01) de PPM para garantizar que todos
+# los paquetes son mutuamente compatibles. La versión nueva de xfun eliminó xfun::attr()
+# que emayili necesita — el snapshot asegura una versión de xfun que aún la tiene.
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/2024-11-01')); \
     install.packages(c( \
+    'xfun', \
+    'knitr', \
+    'rmarkdown', \
     'shinyWidgets', \
     'shinyjs', \
     'DT', \
