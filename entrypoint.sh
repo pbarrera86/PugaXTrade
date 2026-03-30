@@ -13,6 +13,12 @@ env | grep -E '^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT)' > 
 chown shiny:shiny /srv/shiny-server/.Renviron
 chmod 600 /srv/shiny-server/.Renviron
 
+# === FIX PARA VOLUMENES PERSISTENTES ===
+# Si Dokploy tiene un volumen montado, los paquetes pre-compilados en el build son ocultados.
+# Verificamos si stringi funciona. Si falla, lo reinstalamos en tiempo de ejecución.
+echo "Verificando dependencias críticas en tiempo de ejecución..."
+R -e "tryCatch(library(stringi), error = function(e) { message('stringi roto, reinstalando...'); install.packages('stringi', repos='https://packagemanager.posit.co/cran/__linux__/noble/latest') })"
+
 # Exportamos la variable para que los workers devuelvan errores al log principal
 export SHINY_LOG_STDERR=1
 
