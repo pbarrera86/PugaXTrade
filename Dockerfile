@@ -80,6 +80,6 @@ EXPOSE 3838
 
 # ── Health check — Dokploy/Railway sabrán si la app está viva ─────────────────
 HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
-  CMD curl -sf http://localhost:3838/ > /dev/null || exit 1
+  CMD curl -sf http://localhost:3838/ping.html > /dev/null || exit 1
 
 CMD ["/usr/local/bin/entrypoint.sh"]
