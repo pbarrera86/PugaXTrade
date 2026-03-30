@@ -38,9 +38,10 @@ services:
 
     volumes:
       - shiny_logs:/var/log/shiny-server
+      - /root/apps/pugaxtrade:/srv/shiny-server/app
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -H 'Host: localhost' http://127.0.0.1:3838/ >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS -H 'Host: localhost' http://127.0.0.1:3838/ping.html >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
