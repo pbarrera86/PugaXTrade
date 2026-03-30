@@ -37,7 +37,6 @@ services:
       SMTP_ADMIN: ${SMTP_ADMIN_EMAIL}
 
     volumes:
-      - /root/apps/pugaxtrade:/srv/shiny-server
       - shiny_logs:/var/log/shiny-server
 
     healthcheck:
