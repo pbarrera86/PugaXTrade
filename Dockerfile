@@ -13,12 +13,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsodium-dev \
     libxt-dev \
     pandoc \
+    cmake \
+    libmbedtls-dev \
+    libudunits2-dev \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libtiff5-dev \
+    libjpeg-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libcairo2-dev \
+    libfontconfig1-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # ── R packages ─────────────────────────────────────────────────────────────────
-# Instalamos en una sola capa para optimizar cache de Docker
-RUN R -e "install.packages(c( \
+# Usamos el repositorio de binarios de Posit (PPM) para Ubuntu Jammy
+# Esto acelera el build de 40 mins a ~5 mins al evitar compilar desde código fuente
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
+    install.packages(c( \
     'shiny', \
     'shinyWidgets', \
     'shinyjs', \
@@ -52,7 +68,7 @@ RUN R -e "install.packages(c( \
     'htmltools', \
     'rlang', \
     'openssl' \
-  ), repos='https://cloud.r-project.org', dependencies=TRUE)"
+  ), dependencies=TRUE)"
 
 # ── Shiny Server config ────────────────────────────────────────────────────────
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
