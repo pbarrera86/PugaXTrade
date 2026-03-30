@@ -32,9 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── R packages ─────────────────────────────────────────────────────────────────
-# Usamos el repositorio de binarios de Posit (PPM) para Ubuntu Jammy
-# Esto acelera el build de 40 mins a ~5 mins al evitar compilar desde código fuente
-RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
+# Usamos el repositorio de binarios de Posit (PPM) para Ubuntu Noble (24.04)
+# Esto acelera el build al evitar compilar desde código fuente
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
     install.packages(c( \
     'shiny', \
     'shinyWidgets', \
