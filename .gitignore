@@ -12,12 +12,20 @@ smtp.yml
 cache/
 
 # Archivos de debug y test locales
-debug_run.R
+debug_*.R
 reproduce_crash.R
 test_*.R
 verify_*.R
-rsconnect/
-check_rlang.R
+fix_*.R
+check_*.R
 clean_cache.R
-schema.sql
-Documentacion_PugaxTrade.*
+cleanup_*.R
+db_init.R
+rsconnect/
+current_tribble.txt
+
+# Documentación interna (no necesaria en infra-repo)
+Documentacion_PugaXTrade.*
+
+# Schema solo sube si es parte del repo de app, no del infra-repo
+# schema.sql
