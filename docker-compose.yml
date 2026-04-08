@@ -21,6 +21,7 @@ services:
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
       STRIPE_PRICE_ID: ${STRIPE_PRICE_ID}
       STRIPE_ALLOW_TEST: ${STRIPE_ALLOW_TEST}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
 
       PGHOST: ${PGHOST}
       PGPORT: ${PGPORT}
@@ -35,6 +36,11 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
       SMTP_ADMIN: ${SMTP_ADMIN_EMAIL}
+
+      # Seguridad: Admin y config de negocio fuera del código fuente
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      DEFAULT_REFERRER_USERNAME: ${DEFAULT_REFERRER_USERNAME}
+      REFERRAL_COMMISSION_AMOUNT: ${REFERRAL_COMMISSION_AMOUNT:-9.00}
 
     volumes:
       - shiny_logs:/var/log/shiny-server
