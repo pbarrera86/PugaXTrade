@@ -12,7 +12,8 @@ LOG_DIR="/var/log/shiny-server"
 APP_CACHE_DIR="${APP_DIR}/app_cache"
 
 # Filtro de variables críticas de entorno
-ENV_FILTER='^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT|SUPER_ADMIN|DEFAULT_REFERRER|REFERRAL_COMMISSION)='
+# Coincide con prefijos reales como PGHOST, STRIPE_SECRET_KEY, SMTP_HOST, etc.
+ENV_FILTER='^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT$|SUPER_ADMIN|DEFAULT_REFERRER_USERNAME$|REFERRAL_COMMISSION_AMOUNT$).*='
 
 log() {
   echo "[entrypoint] $*"
@@ -27,8 +28,12 @@ log "Configurando variables de entorno..."
 # Crear directorios necesarios
 mkdir -p "$APP_DIR" "$LOG_DIR" "$APP_CACHE_DIR" "$R_ENV_DIR" "/srv/shiny-server"
 
+# Capturar variables filtradas una sola vez
+FILTERED_ENV="$(env | grep -E "$ENV_FILTER" || true)"
+
 # 1) Variables para R globalmente
-if env | grep -E "$ENV_FILTER" > "$R_ENVIRON_SITE"; then
+if [ -n "$FILTERED_ENV" ]; then
+  printf '%s\n' "$FILTERED_ENV" > "$R_ENVIRON_SITE"
   chmod 0644 "$R_ENVIRON_SITE"
 else
   : > "$R_ENVIRON_SITE"
@@ -37,7 +42,8 @@ else
 fi
 
 # 2) Copia en /srv/shiny-server/.Renviron
-if env | grep -E "$ENV_FILTER" > "$SHINY_RENVIRON"; then
+if [ -n "$FILTERED_ENV" ]; then
+  printf '%s\n' "$FILTERED_ENV" > "$SHINY_RENVIRON"
   chmod 0600 "$SHINY_RENVIRON"
 else
   : > "$SHINY_RENVIRON"
