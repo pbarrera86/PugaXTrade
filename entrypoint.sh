@@ -1,47 +1,48 @@
 #!/bin/bash
 set -e
 
-# entrypoint.sh - PugaX Trade — Gestión de Variables de Entorno y Servidor
+# entrypoint.sh - PugaX Trade
 
-# Re-construimos .Renviron con las variables críticas (Dokploy / Env)
-# Incluimos DB_URL, STRIPE, SMTP, y cualquier otra necesaria para la app
-echo "Configurando .Renviron..."
-env | grep -E '^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT|SUPER_ADMIN|DEFAULT_REFERRER|REFERRAL_COMMISSION)' > /srv/shiny-server/.Renviron || true
+# Filtro de variables críticas de entorno
+ENV_FILTER='^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT|SUPER_ADMIN|DEFAULT_REFERRER|REFERRAL_COMMISSION)'
 
-# Aseguramos que el usuario 'shiny' tenga acceso
-# En algunas bases de Docker /srv/shiny-server es el home de la app
+echo "Configurando variables de entorno..."
+
+# 1. /etc/R/Renviron.site — cargado automáticamente por TODOS los procesos R,
+#    incluyendo los hijos de Shiny Server. Este es el método correcto para Docker.
+env | grep -E "$ENV_FILTER" > /etc/R/Renviron.site || true
+chmod 644 /etc/R/Renviron.site
+
+# 2. Copia de seguridad en /srv/shiny-server/.Renviron (app.R lo lee con readRenviron)
+env | grep -E "$ENV_FILTER" > /srv/shiny-server/.Renviron || true
 chown shiny:shiny /srv/shiny-server/.Renviron
 chmod 600 /srv/shiny-server/.Renviron
 
+# 3. Copiar también al directorio de la app y DEJARLO AHÍ — app.R lo necesita
+#    (getwd() = /srv/shiny-server/app al arrancar Shiny)
+cp /srv/shiny-server/.Renviron /srv/shiny-server/app/.Renviron || true
+chown shiny:shiny /srv/shiny-server/app/.Renviron 2>/dev/null || true
+chmod 600 /srv/shiny-server/app/.Renviron 2>/dev/null || true
+
 # libicu70 se instala en BUILD TIME (Dockerfile) — no es necesario descargarlo aquí.
-# Si no existe, es porque la imagen no fue construida con el Dockerfile correcto.
 if [ ! -f "/usr/lib/x86_64-linux-gnu/libicui18n.so.70" ]; then
     echo "ADVERTENCIA: libicui18n.so.70 no encontrada. Reconstruye la imagen Docker."
 fi
 
-# Exportamos la variable para que los workers devuelvan errores al log principal
+# Exportar para que los workers devuelvan errores al log principal
 export SHINY_LOG_STDERR=1
 
-# Preparamos el directorio de logs
+# Preparar directorio de logs
 mkdir -p /var/log/shiny-server
 chown shiny:shiny /var/log/shiny-server
 
+# Preparar directorio de caché de la app (evita el error de permisos de bslib/sass)
+mkdir -p /srv/shiny-server/app/app_cache
+chown -R shiny:shiny /srv/shiny-server/app/app_cache 2>/dev/null || true
+
 echo "Ejecutando migraciones de Base de Datos..."
-# Copiamos .Renviron temporalmente para que db_init.R lo use, luego lo eliminamos del dir público
-cd /srv/shiny-server/app
-if [ -f "/srv/shiny-server/.Renviron" ]; then
-  cp /srv/shiny-server/.Renviron ./.Renviron
-  Rscript db_init.R || true
-  # Eliminar .Renviron del directorio de la app para no exponerlo via Shiny Server
-  rm -f ./.Renviron
-else
-  Rscript db_init.R || true
-fi
+cd /srv/shiny-server/app && Rscript db_init.R || true
 
-mkdir -p /srv/shiny-server/app_cache
-chown shiny:shiny /srv/shiny-server/app_cache
-
-# Iniciamos el servidor en background y mostramos los logs de workers
 echo "Iniciando Shiny Server..."
 /usr/bin/shiny-server &
 sleep 2
