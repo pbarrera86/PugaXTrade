@@ -1,0 +1,43 @@
+# ── PugaX Trade — .dockerignore ──────────────────────────────────────────────
+# Evita incluir archivos innecesarios o sensibles en el build context de Docker
+
+# Credenciales
+.Renviron
+*.Renviron
+smtp.yml
+
+# R session
+.Rhistory
+.RData
+.Rproj.user/
+
+# Cache de análisis (se genera en runtime)
+cache/
+
+# Scripts de test y debug
+debug_*.R
+reproduce_crash.R
+test_*.R
+verify_*.R
+fix_*.R
+check_*.R
+clean_cache.R
+cleanup_*.R
+
+# Despliegue ShinyApps.io (no relevante en Docker)
+rsconnect/
+
+# Datos temporales
+current_tribble.txt
+
+# Git
+.git/
+.gitignore
+
+# Documentación
+Documentacion_PugaXTrade.*
+Readme.md
+
+# IDE
+*.code-workspace
+.vscode/
