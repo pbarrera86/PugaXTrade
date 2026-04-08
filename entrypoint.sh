@@ -1,50 +1,99 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
 # entrypoint.sh - PugaX Trade
 
+APP_DIR="/srv/shiny-server/app"
+SHINY_ROOT="/srv/shiny-server"
+R_ENVIRON_SITE="/etc/R/Renviron.site"
+SHINY_RENVIRON="${SHINY_ROOT}/.Renviron"
+APP_RENVIRON="${APP_DIR}/.Renviron"
+SHINY_LOG_DIR="/var/log/shiny-server"
+APP_CACHE_DIR="${APP_DIR}/app_cache"
+
 # Filtro de variables críticas de entorno
-ENV_FILTER='^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT|SUPER_ADMIN|DEFAULT_REFERRER|REFERRAL_COMMISSION)'
+ENV_FILTER='^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT|SUPER_ADMIN|DEFAULT_REFERRER|REFERRAL_COMMISSION)='
 
-echo "Configurando variables de entorno..."
+log() {
+  echo "[entrypoint] $*"
+}
 
-# 1. /etc/R/Renviron.site — cargado automáticamente por TODOS los procesos R,
-#    incluyendo los hijos de Shiny Server. Este es el método correcto para Docker.
-env | grep -E "$ENV_FILTER" > /etc/R/Renviron.site || true
-chmod 644 /etc/R/Renviron.site
+warn() {
+  echo "[entrypoint][WARN] $*" >&2
+}
 
-# 2. Copia de seguridad en /srv/shiny-server/.Renviron (app.R lo lee con readRenviron)
-env | grep -E "$ENV_FILTER" > /srv/shiny-server/.Renviron || true
-chown shiny:shiny /srv/shiny-server/.Renviron
-chmod 600 /srv/shiny-server/.Renviron
+# Asegurar directorios base
+mkdir -p "$SHINY_ROOT" "$APP_DIR" "$SHINY_LOG_DIR" "$APP_CACHE_DIR"
 
-# 3. Copiar también al directorio de la app y DEJARLO AHÍ — app.R lo necesita
-#    (getwd() = /srv/shiny-server/app al arrancar Shiny)
-cp /srv/shiny-server/.Renviron /srv/shiny-server/app/.Renviron || true
-chown shiny:shiny /srv/shiny-server/app/.Renviron 2>/dev/null || true
-chmod 600 /srv/shiny-server/app/.Renviron 2>/dev/null || true
+log "Configurando variables de entorno..."
 
-# libicu70 se instala en BUILD TIME (Dockerfile) — no es necesario descargarlo aquí.
-if [ ! -f "/usr/lib/x86_64-linux-gnu/libicui18n.so.70" ]; then
-    echo "ADVERTENCIA: libicui18n.so.70 no encontrada. Reconstruye la imagen Docker."
+# 1) /etc/R/Renviron.site
+#    Cargado automáticamente por procesos R, incluyendo workers de Shiny Server.
+#    Se sobreescribe con solo las variables filtradas.
+if env | grep -E "$ENV_FILTER" > "$R_ENVIRON_SITE"; then
+  chmod 0644 "$R_ENVIRON_SITE"
+else
+  : > "$R_ENVIRON_SITE"
+  chmod 0644 "$R_ENVIRON_SITE"
+  warn "No se encontraron variables de entorno que coincidan con el filtro para $R_ENVIRON_SITE."
 fi
 
-# Exportar para que los workers devuelvan errores al log principal
+# 2) Copia de respaldo en /srv/shiny-server/.Renviron
+if env | grep -E "$ENV_FILTER" > "$SHINY_RENVIRON"; then
+  chmod 0600 "$SHINY_RENVIRON"
+  chown shiny:shiny "$SHINY_RENVIRON" 2>/dev/null || true
+else
+  : > "$SHINY_RENVIRON"
+  chmod 0600 "$SHINY_RENVIRON"
+  chown shiny:shiny "$SHINY_RENVIRON" 2>/dev/null || true
+  warn "No se encontraron variables de entorno que coincidan con el filtro para $SHINY_RENVIRON."
+fi
+
+# 3) Copiar al directorio de la app
+cp -f "$SHINY_RENVIRON" "$APP_RENVIRON"
+chmod 0600 "$APP_RENVIRON"
+chown shiny:shiny "$APP_RENVIRON" 2>/dev/null || true
+
+# Validación opcional de libicu70
+if [ ! -f "/usr/lib/x86_64-linux-gnu/libicui18n.so.70" ]; then
+  warn "libicui18n.so.70 no encontrada. Si tu app la necesita, reconstruye la imagen Docker."
+fi
+
+# Exportar para que los workers envíen errores al stderr principal
 export SHINY_LOG_STDERR=1
 
-# Preparar directorio de logs
-mkdir -p /var/log/shiny-server
-chown shiny:shiny /var/log/shiny-server
+# Permisos de logs y caché
+chown -R shiny:shiny "$SHINY_LOG_DIR" 2>/dev/null || true
+chown -R shiny:shiny "$APP_CACHE_DIR" 2>/dev/null || true
 
-# Preparar directorio de caché de la app (evita el error de permisos de bslib/sass)
-mkdir -p /srv/shiny-server/app/app_cache
-chown -R shiny:shiny /srv/shiny-server/app/app_cache 2>/dev/null || true
+# Migraciones / inicialización de DB
+if [ -f "${APP_DIR}/db_init.R" ]; then
+  log "Ejecutando migraciones de Base de Datos..."
+  cd "$APP_DIR"
+  Rscript db_init.R || warn "db_init.R devolvió error; se continúa con el arranque."
+else
+  warn "No se encontró ${APP_DIR}/db_init.R; se omite inicialización de base de datos."
+fi
 
-echo "Ejecutando migraciones de Base de Datos..."
-cd /srv/shiny-server/app && Rscript db_init.R || true
+log "Iniciando Shiny Server..."
 
-echo "Iniciando Shiny Server..."
-/usr/bin/shiny-server &
-sleep 2
-tail -qF /var/log/shiny-server/*.log
-wait
+# Ejecutar Shiny Server en primer plano si está disponible esa opción
+if /usr/bin/shiny-server --help 2>&1 | grep -q -- '--foreground'; then
+  exec /usr/bin/shiny-server --foreground
+else
+  # Fallback para imágenes donde no existe --foreground
+  /usr/bin/shiny-server &
+  SHINY_PID=$!
+
+  sleep 2
+
+  if compgen -G "${SHINY_LOG_DIR}/*.log" > /dev/null; then
+    tail -n +1 -qF "${SHINY_LOG_DIR}"/*.log &
+    TAIL_PID=$!
+  else
+    warn "No se encontraron logs en ${SHINY_LOG_DIR}. Manteniendo proceso principal de Shiny Server."
+    TAIL_PID=""
+  fi
+
+  wait "$SHINY_PID"
+fi
