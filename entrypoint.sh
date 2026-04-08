@@ -30,7 +30,7 @@ mkdir -p "$LOG_DIR"
 mkdir -p "$APP_CACHE_DIR"
 mkdir -p "$R_ENV_DIR"
 
-# 1) Guardar variables para R globalmente
+# 1) Variables para R globalmente
 if env | grep -E "$ENV_FILTER" > "$R_ENVIRON_SITE"; then
   chmod 0644 "$R_ENVIRON_SITE"
 else
@@ -39,7 +39,7 @@ else
   warn "No se encontraron variables filtradas para $R_ENVIRON_SITE"
 fi
 
-# 2) Guardar copia en el home de root por compatibilidad
+# 2) Copia en root
 if env | grep -E "$ENV_FILTER" > "$ROOT_RENVIRON"; then
   chmod 0600 "$ROOT_RENVIRON"
 else
@@ -48,24 +48,19 @@ else
   warn "No se encontraron variables filtradas para $ROOT_RENVIRON"
 fi
 
-# 3) Guardar copia dentro de la app
+# 3) Copia dentro de la app
 cp -f "$ROOT_RENVIRON" "$APP_RENVIRON"
 chmod 0600 "$APP_RENVIRON"
 
-# Si existe usuario shiny, aplicar ownership sin romper
+# Ownership si existe usuario shiny
 chown -R shiny:shiny "$APP_CACHE_DIR" 2>/dev/null || true
 chown shiny:shiny "$APP_RENVIRON" 2>/dev/null || true
 chown -R shiny:shiny "$LOG_DIR" 2>/dev/null || true
 
-# Validación opcional de ICU
-if [ ! -f "/usr/lib/x86_64-linux-gnu/libicui18n.so.70" ]; then
-  warn "libicui18n.so.70 no encontrada. Si tu app la necesita, reconstruye la imagen Docker."
-fi
-
-# Exportar para que workers manden errores al log principal
+# Logs de workers a stderr
 export SHINY_LOG_STDERR=1
 
-# Ejecutar inicialización de BD si existe
+# Inicialización de BD
 if [ -f "${APP_DIR}/db_init.R" ]; then
   log "Ejecutando migraciones de Base de Datos..."
   cd "$APP_DIR"
@@ -95,6 +90,5 @@ if command -v shiny-server >/dev/null 2>&1; then
   fi
 else
   warn "No se encontró shiny-server en el contenedor."
-  warn "Verifica tu Dockerfile o la imagen base."
   exit 1
 fi
