@@ -899,13 +899,15 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 # ----------------- App raíz -----------------
 ui <- function(req) {
   # ── Rutas HTTP especiales ────────────────────────────────────────────────────
-  if (identical(req$PATH_INFO, "/webhook")) {
+  q_sys <- shiny::parseQueryString(req$QUERY_STRING %||% "")
+  
+  if (identical(req$PATH_INFO, "/webhook") || identical(q_sys$action, "webhook")) {
     return(handle_stripe_webhook(req))
   }
-  if (identical(req$PATH_INFO, "/auth/set-session")) {
+  if (identical(req$PATH_INFO, "/auth/set-session") || identical(q_sys$action, "set-session")) {
     return(.handle_set_session(req))
   }
-  if (identical(req$PATH_INFO, "/auth/logout")) {
+  if (identical(req$PATH_INFO, "/auth/logout") || identical(q_sys$action, "logout")) {
     return(.handle_logout_cookie(req))
   }
 
