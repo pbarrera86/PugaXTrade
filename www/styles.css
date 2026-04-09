@@ -1,0 +1,113 @@
+#toast-container { z-index: 100000 !important; }
+
+/* Premium Dark Mode Adjustments on top of Cyborg */
+body {
+    background: radial-gradient(circle at top, #1b2028, #000) !important;
+    color: #e2e8f0;
+    font-family: 'Inter', 'Outfit', sans-serif !important;
+}
+
+.card, .well, .panel {
+    background: rgba(30, 35, 45, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.account-card {
+    background: rgba(30, 35, 45, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.card:hover, .account-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 100, 255, 0.1) !important;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #007bff, #0056b3) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.4);
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(0, 123, 255, 0.6);
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, #ff9900, #d35400) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: #007bff !important;
+    border-color: #007bff !important;
+    color: white !important;
+}
+
+table.dataTable.nowrap th, table.dataTable.nowrap td {
+    color: #cbd5e1 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Spinner and Loaders */
+#shiny-busy {
+    display: none !important; /* hide default shiny busy */
+}
+
+/* Minimalist glowing text inputs */
+input[type="text"], input[type="password"], input[type="email"] {
+    background: rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+    border-radius: 6px !important;
+    transition: all 0.2s;
+}
+
+input:focus {
+    border-color: #007bff !important;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.5) !important;
+    outline: none !important;
+}
+
+/* Auth flash prevention - when #root_ui is empty, show a loading text */
+#root_ui:empty::before {
+    content: "Cargando PugaX...";
+    display: block;
+    text-align: center;
+    margin-top: 20vh;
+    font-size: 24px;
+    font-weight: 300;
+    color: #888;
+    animation: pulse 1.5s infinite alternate;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.5; }
+    100% { opacity: 1; text-shadow: 0 0 15px rgba(255, 255, 255, 0.5); }
+}
+
+/* DT Colors enforcement */
+.dataTables_wrapper .dataTable th,
+.dataTables_wrapper .dataTable td {
+    color: #ffffff !important;
+}
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_processing,
+.dataTables_wrapper .dataTables_paginate {
+    color: #ffffff !important;
+}
