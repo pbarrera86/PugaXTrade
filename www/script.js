@@ -5,12 +5,13 @@
 // Redirige al endpoint server-side que establece la cookie con flag HttpOnly
 Shiny.addCustomMessageHandler('setHttpOnlyCookie', function(x) {
   var base = window.location.origin;
-  window.location.replace(base + '/auth/set-session?tok=' + encodeURIComponent(x.tok));
+  window.location.replace(base + '/?action=set-session&tok=' + encodeURIComponent(x.tok));
 });
 
 // Logout: redirige al endpoint que borra la cookie HttpOnly server-side
 Shiny.addCustomMessageHandler('clearSessionCookie', function(x) {
-  window.location.replace('/auth/logout');
+  var base = window.location.origin;
+  window.location.replace(base + '/?action=logout');
 });
 
 // reset_idle y otros handlers de UX
