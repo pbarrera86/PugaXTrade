@@ -331,7 +331,7 @@ metric_unit_map <- function() {
     return(NULL)
   }
 
-  kv <- html_elements(nodes[[1]], "td")
+  kv <- html_elements(nodes, "td")
   txt <- html_text(kv, trim = TRUE)
 
   if (length(txt) %% 2 != 0) txt <- head(txt, -1)

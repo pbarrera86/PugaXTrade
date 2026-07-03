@@ -53,7 +53,7 @@ utils_read_finviz_table <- function(sym) {
   nodes <- rvest::html_elements(html, "table.snapshot-table2")
   if (length(nodes) == 0) return(NULL)
   
-  kv <- rvest::html_elements(nodes[[1]], "td")
+  kv <- rvest::html_elements(nodes, "td")
   txt <- rvest::html_text(kv, trim = TRUE)
   if (length(txt) %% 2 != 0) txt <- head(txt, -1)
   if (length(txt) < 4) return(NULL)
