@@ -71,9 +71,12 @@ safe_buy_price <- function(intrinsic_val, safety_margin_pct = 10) {
 }
 
 # INFRAVALORADA (margen > +10%) / EN VALOR JUSTO (-10% a +10%) / SOBREVALORADA (< -10%)
+# El porcentaje mostrado es el propio margen de seguridad: cuánto está el precio actual
+# por debajo (+) o por encima (-) del precio de compra seguro (valor intrínseco -10%).
 veredicto_valor <- function(margin_pct) {
   if (is.na(margin_pct)) return("Sin datos")
-  if (margin_pct > 10) return("Infravalorada")
-  if (margin_pct >= -10) return("En valor justo")
-  "Sobrevalorada"
+  pct_txt <- sprintf("%+.1f%%", margin_pct)
+  if (margin_pct > 10) return(paste0("Infravalorada (", pct_txt, ")"))
+  if (margin_pct >= -10) return(paste0("En valor justo (", pct_txt, ")"))
+  paste0("Sobrevalorada (", pct_txt, ")")
 }
