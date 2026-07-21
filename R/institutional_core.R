@@ -1788,6 +1788,9 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
         `Dist. SMA50 (%)` = NA_real_,
         `Dist. SMA200 (%)` = NA_real_,
         `Potencial a objetivo (%)` = NA_real_,
+        `Valor Intrínseco (USD)` = NA_real_,
+        `Margen Intrínseco (%)` = NA_real_,
+        `Valoración vs Mercado` = "N/D",
         Sector = "Desconocido",
         Interpretacion = "No fue posible obtener correctamente los datos de Finviz para este ticker."
       ),
@@ -1825,6 +1828,23 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
   d200_val <- scored %>%
     filter(Indicador == "Dist. SMA200") %>%
     pull(Valor)
+  graham_val <- scored %>%
+    filter(Indicador == "Valor Graham (USD)") %>%
+    pull(Valor)
+  graham_margin_val <- scored %>%
+    filter(Indicador == "Margen Graham") %>%
+    pull(Valor)
+
+  graham_margin_val <- graham_margin_val %||% NA_real_
+  valoracion_txt <- if (!is.na(graham_margin_val)) {
+    if (graham_margin_val >= 0) {
+      paste0("Infravalorada (+", graham_margin_val, "%)")
+    } else {
+      paste0("Sobrevalorada (", graham_margin_val, "%)")
+    }
+  } else {
+    "N/D"
+  }
 
   summary <- tibble(
     Ticker = ticker,
@@ -1838,6 +1858,9 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
     `Dist. SMA50 (%)` = d50_val %||% NA_real_,
     `Dist. SMA200 (%)` = d200_val %||% NA_real_,
     `Potencial a objetivo (%)` = upside_val %||% NA_real_,
+    `Valor Intrínseco (USD)` = graham_val %||% NA_real_,
+    `Margen Intrínseco (%)` = graham_margin_val,
+    `Valoración vs Mercado` = valoracion_txt,
     Sector = raw$raw_Sector %||% "Desconocido",
     Interpretacion = interpretation
   )
@@ -2096,7 +2119,9 @@ inst_export_analysis_to_excel <- function(result, file) {
       `Dist. SMA20 (%)` = round(`Dist. SMA20 (%)`, 2),
       `Dist. SMA50 (%)` = round(`Dist. SMA50 (%)`, 2),
       `Dist. SMA200 (%)` = round(`Dist. SMA200 (%)`, 2),
-      `Potencial a objetivo (%)` = round(`Potencial a objetivo (%)`, 2)
+      `Potencial a objetivo (%)` = round(`Potencial a objetivo (%)`, 2),
+      `Valor Intrínseco (USD)` = round(`Valor Intrínseco (USD)`, 2),
+      `Margen Intrínseco (%)` = round(`Margen Intrínseco (%)`, 2)
     )
   sem_vals_res <- res_df$Semaforo
   res_df$Semaforo <- ""
