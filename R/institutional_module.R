@@ -522,7 +522,9 @@ institutional_server <- function(id, user_reactive) {
               across(matches("Ret_Estr|Ret_B&H"), ~ inst_fmt_num(.x, 1)),
               across(matches("RSI"), ~ inst_fmt_num(.x, 2)),
               across(matches("SMA"), ~ inst_fmt_num(.x, 2)),
-              across(matches("Potencial"), ~ inst_fmt_num(.x, 2))
+              across(matches("Potencial"), ~ inst_fmt_num(.x, 2)),
+              across(matches("Valor Intr.nseco"), ~ inst_fmt_num(.x, 2)),
+              across(matches("Margen Intr.nseco"), ~ inst_fmt_num(.x, 2))
             ) %>%
             select(
               any_of(c("Rank", "Ticker")),
