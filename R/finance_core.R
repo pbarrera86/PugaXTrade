@@ -203,6 +203,34 @@ eval_indicator <- function(ind_en, val) {
       score <- S_R
     }
     razon <- "P/Libro: depende del sector; alto suele ser caro."
+  } else if (ind_en %in% c("Graham Number", "DCF Valor", "Graham Ajustado", "Valor Intrínseco Final", "Precio Compra Segura")) {
+    sem <- "Amarillo"
+    score <- 50
+    razon <- "Métrica de referencia absoluta (no se semaforiza directamente)."
+  } else if (ind_en == "Margen Graham") {
+    if (v >= 0) {
+      sem <- "Verde"
+      score <- S_V
+    } else if (v >= -20) {
+      sem <- "Amarillo"
+      score <- S_A
+    } else {
+      sem <- "Rojo"
+      score <- S_R
+    }
+    razon <- "Positivo es subvaluado. (>=0: Verde, 0 a -20: Amarillo, <-20: Rojo)"
+  } else if (ind_en == "Margen Seguridad") {
+    if (v > 10) {
+      sem <- "Verde"
+      score <- S_V
+    } else if (v >= -10) {
+      sem <- "Amarillo"
+      score <- S_A
+    } else {
+      sem <- "Rojo"
+      score <- S_R
+    }
+    razon <- "Margen vs. precio de compra seguro (Valor Intrínseco -10%). (>10%: Verde/Infravalorada, -10 a 10%: Amarillo/Valor justo, <-10%: Rojo/Sobrevalorada)"
   }
 
   # --- CRECIMIENTO ---
@@ -669,6 +697,23 @@ build_indicator_table <- function(tk, m, raw) {
   price <- m$px
   if (is.na(price) || is.null(price)) price <- .num(getv_robust(r, c("Price")))
 
+  # ---- Valor intrínseco: DCF + Graham (Number y Ajustado) ----
+  # Campos ya scrapeados de Finviz, todo calculado por acción (sin Shares Outstanding/Debt/Cash en $)
+  eps_ttm_usd <- .num(getv_robust(r, c("EPS (ttm)", "EPS.ttm.")))
+  book_sh     <- .num(getv_robust(r, c("Book/sh",   "Book.sh")))
+  cash_sh     <- .num(getv_robust(r, c("Cash/sh",   "Cash.sh")))
+  p_fcf_raw   <- .num(getv_robust(r, c("P/FCF",     "P.FCF",   "P.FCf")))
+  debt_eq_raw <- .num(getv_robust(r, c("Debt/Eq",   "Debt.Eq")))
+  eps_5y_pct  <- .num(getv_robust(r, c("EPS next 5Y", "EPS.next.5Y")))
+
+  graham_num   <- graham_number(eps_ttm_usd, book_sh)
+  graham_marg  <- graham_margin_pct(graham_num, price)
+  dcf_val      <- dcf_value_per_share(price, p_fcf_raw, cash_sh, book_sh, debt_eq_raw, eps_5y_pct)
+  graham_adj   <- graham_adjusted_value(eps_ttm_usd, eps_5y_pct)
+  iv_final     <- intrinsic_value_final(dcf_val, graham_adj)
+  safe_price   <- safe_buy_price(iv_final, 10)
+  margin_final <- margin_of_safety_pct(safe_price, price)
+
   # Extraction Logic - usando claves originales de Finviz (igual que modulo institucional)
   # getv_robust busca primero por clave exacta, luego por clave sanitizada (legacy)
   vals <- list(
@@ -679,6 +724,13 @@ build_indicator_table <- function(tk, m, raw) {
     "P/S"         = .num(getv_robust(r, c("P/S",         "P.S"))),
     "P/FCF"       = .num(getv_robust(r, c("P/FCF",       "P.FCF",      "P.FCf"))),
     "EV/EBITDA"   = .num(getv_robust(r, c("EV/EBITDA",   "EV.EBITDA"))),
+    "Graham Number"          = graham_num,
+    "Margen Graham"          = graham_marg,
+    "DCF Valor"              = dcf_val,
+    "Graham Ajustado"        = graham_adj,
+    "Valor Intrínseco Final" = iv_final,
+    "Precio Compra Segura"   = safe_price,
+    "Margen Seguridad"       = margin_final,
     "P/B"         = .num(getv_robust(r, c("P/B",         "P.B"))),
 
     # crecimiento
@@ -736,6 +788,13 @@ build_indicator_table <- function(tk, m, raw) {
     "valoración", "P/FCF", "P/Flujo de Caja Libre", 1.5,
     "valoración", "EV/EBITDA", "EV/EBITDA", 1.5,
     "valoración", "P/B", "P/Valor en libros", 0.5,
+    "valoración", "Graham Number", "Valor Graham (USD)", 0.5,
+    "valoración", "Margen Graham", "Margen Graham (Valuación)", 1.2,
+    "valoración", "DCF Valor", "Valor DCF por acción (USD)", 0.5,
+    "valoración", "Graham Ajustado", "Valor Graham Ajustado (USD)", 0.5,
+    "valoración", "Valor Intrínseco Final", "Valor Intrínseco Final (USD)", 0.5,
+    "valoración", "Precio Compra Segura", "Precio de Compra Segura -10% (USD)", 0.5,
+    "valoración", "Margen Seguridad", "Margen de Seguridad (%)", 2.0,
     "crecimiento", "EPS Y/Y TTM", "EPS interanual (TTM) %", 2.0,
     "crecimiento", "Sales Y/Y TTM", "Ventas interanual (TTM) %", 1.5,
     "crecimiento", "EPS next Y", "EPS próximo año %", 1.5,
@@ -916,6 +975,16 @@ analyze_stock <- function(tk, m, invest_prof = "conservador", macro_ctx = "norma
   upside <- if (!is.na(tgt) && !is.na(price) && price > 0) round(100 * (tgt / price - 1), 2) else NA_real_
   trend <- infer_trend(price, m$s20, m$s50, m$s200, m$rsi)
 
+  # Valor intrínseco (DCF + Graham), leído de la tabla de indicadores ya calculada
+  get_ind_val <- function(name) {
+    v <- indicators$Valor[indicators$`Indicador EN` == name]
+    if (length(v) == 0) NA_real_ else v[1]
+  }
+  iv_final_val <- get_ind_val("Valor Intrínseco Final")
+  safe_price_val <- get_ind_val("Precio Compra Segura")
+  margin_seg_val <- get_ind_val("Margen Seguridad")
+  veredicto_val <- veredicto_valor(margin_seg_val)
+
   # Final Summary Row
   # Semaforo Score (visual summary of text lights)
   greens <- sum(indicators$Semáforo == "Verde", na.rm = TRUE)
@@ -935,6 +1004,10 @@ analyze_stock <- function(tk, m, invest_prof = "conservador", macro_ctx = "norma
     Price = if (!is.na(price)) round(price, 2) else NA_real_,
     Target = if (!is.na(tgt)) round(tgt, 2) else NA_real_,
     `Target(Price-1 %)` = as.numeric(upside),
+    `Valor Intrínseco (USD)` = if (!is.na(iv_final_val)) round(iv_final_val, 2) else NA_real_,
+    `Precio Compra Segura (USD)` = if (!is.na(safe_price_val)) round(safe_price_val, 2) else NA_real_,
+    `Margen Seguridad (%)` = as.numeric(margin_seg_val),
+    `Veredicto Valor` = veredicto_val,
     Tendencia = trend,
     SemaforoScore = as.numeric(sem_score_vis),
     `Analistas %` = as.numeric(sc_anal),
@@ -1175,7 +1248,10 @@ run_pipeline <- function(tickers, progress_cb = NULL, investor_profile = "conser
           `Semáforo` = "🟢 0   🟡 0   🔴 0", SemaforoScore = 50,
           `Analistas %` = NA_real_, `Crecimiento %` = NA_real_, `Salud %` = NA_real_,
           `Rentabilidad %` = NA_real_, `Sentimiento %` = NA_real_, `Técnica %` = NA_real_, `Valoración %` = NA_real_,
-          Price = NA_real_, Target = NA_real_, `Target(Price-1 %)` = NA_real_, Tendencia = "Desconocida"
+          Price = NA_real_, Target = NA_real_, `Target(Price-1 %)` = NA_real_,
+          `Valor Intrínseco (USD)` = NA_real_, `Precio Compra Segura (USD)` = NA_real_,
+          `Margen Seguridad (%)` = NA_real_, `Veredicto Valor` = "Sin datos",
+          Tendencia = "Desconocida"
         )
         summ[[tk]] <<- neutral
         ind_list[[tk]] <<- tibble::tibble()
