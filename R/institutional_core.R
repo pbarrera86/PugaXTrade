@@ -1082,8 +1082,18 @@ extract_metrics <- function(raw, tech) {
 
   eps_ttm <- as_num(getv_robust(raw, c("EPS (ttm)", "EPS(ttm)")))
   bvps <- as_num(getv_robust(raw, c("Book/sh")))
-  graham_num <- if (!is.na(eps_ttm) && eps_ttm > 0 && !is.na(bvps) && bvps > 0) sqrt(22.5 * eps_ttm * bvps) else NA_real_
-  graham_margin <- if (!is.na(graham_num) && !is.na(price) && price > 0) round((graham_num / price - 1) * 100, 2) else NA_real_
+  p_fcf <- as_num(getv_robust(raw, c("P/FCF")))
+  cash_sh <- as_num(getv_robust(raw, c("Cash/sh")))
+  debt_eq <- as_num(getv_robust(raw, c("Debt/Eq")))
+  eps_5y <- as_pct(getv_robust(raw, c("EPS next 5Y")))
+
+  graham_num <- graham_number(eps_ttm, bvps)
+  graham_margin <- graham_margin_pct(graham_num, price)
+  dcf_val <- dcf_value_per_share(price, p_fcf, cash_sh, bvps, debt_eq, eps_5y)
+  graham_adj <- graham_adjusted_value(eps_ttm, eps_5y)
+  iv_final <- intrinsic_value_final(dcf_val, graham_adj)
+  safe_price <- safe_buy_price(iv_final, 10)
+  margin_final <- margin_of_safety_pct(safe_price, price)
 
   tibble::tribble(
     ~Categoria, ~Indicador, ~Valor, ~Unidad,
@@ -1098,6 +1108,11 @@ extract_metrics <- function(raw, tech) {
     "Valuación", "P/Libros", as_num(getv_robust(raw, c("P/B"))), "",
     "Valuación", "Valor Graham (USD)", graham_num %||% NA_real_, "USD",
     "Valuación", "Margen Graham", graham_margin, "%",
+    "Valuación", "Valor DCF (USD)", dcf_val %||% NA_real_, "USD",
+    "Valuación", "Valor Graham Ajustado (USD)", graham_adj %||% NA_real_, "USD",
+    "Valuación", "Valor Intrínseco Final (USD)", iv_final %||% NA_real_, "USD",
+    "Valuación", "Precio Compra Segura (USD)", safe_price %||% NA_real_, "USD",
+    "Valuación", "Margen Seguridad", margin_final, "%",
     "Crecimiento", "EPS interanual TTM", as_pct(getv_robust(raw, c("EPS this Y"))), "%",
     "Crecimiento", "Ventas interanual TTM", as_pct(getv_robust(raw, c("Sales Y/Y TTM", "Sales past 5Y"))), "%",
     "Crecimiento", "EPS próximo año", as_pct(getv_robust(raw, c("EPS next Y"))), "%",
@@ -1244,6 +1259,22 @@ score_rule <- function(indicador, valor) {
       score <- 20
     }
     razon <- "Positivo es subvaluado. (\u22650: Verde, 0 a -20: Amarillo, <-20: Rojo)"
+  } else if (indicador %in% c("Valor DCF (USD)", "Valor Graham Ajustado (USD)", "Valor Intr\u00ednseco Final (USD)", "Precio Compra Segura (USD)")) {
+    sem <- "Amarillo"
+    score <- 50
+    razon <- "M\u00e9trica de referencia absoluta."
+  } else if (indicador == "Margen Seguridad") {
+    if (v > 10) {
+      sem <- "Verde"
+      score <- 100
+    } else if (v >= -10) {
+      sem <- "Amarillo"
+      score <- 60
+    } else {
+      sem <- "Rojo"
+      score <- 20
+    }
+    razon <- "Margen vs. precio de compra seguro (Valor Intr\u00ednseco -10%). (>10%: Verde/Infravalorada, -10 a 10%: Amarillo/Valor justo, <-10%: Rojo/Sobrevalorada)"
   } else if (indicador == "EPS interanual TTM") {
     if (v >= 15) {
       sem <- "Verde"
@@ -1630,8 +1661,10 @@ indicator_base_weight <- function(indicador) {
     indicador %in% c("Dist. SMA50") ~ 1.0,
     indicador %in% c("Dist. SMA20", "RSI (14)") ~ 0.8,
     indicador %in% c("Margen Graham", "Volatilidad Anual", "Max Drawdown", "Beta (1A)") ~ 1.2,
+    indicador %in% c("Margen Seguridad") ~ 2.0,
     indicador %in% c("Cruce Media Móvil", "Divergencia RSI") ~ 1.0,
     indicador %in% c("Valor Graham (USD)", "Precio actual (USD)", "Precio objetivo (USD)") ~ 0.9,
+    indicador %in% c("Valor DCF (USD)", "Valor Graham Ajustado (USD)", "Valor Intrínseco Final (USD)", "Precio Compra Segura (USD)") ~ 0.5,
     indicador %in% c("Interés corto") ~ 0.9,
     indicador %in% c("Propiedad institucional", "Transacciones internas") ~ 0.7,
     indicador %in% c("Payout") ~ 0.5,
@@ -1659,6 +1692,11 @@ apply_scores <- function(metric_df, profile = "Balanceado") {
         Indicador == "P/Libros" ~ "P/B",
         Indicador == "Valor Graham (USD)" ~ "Graham Number",
         Indicador == "Margen Graham" ~ "Graham Margin",
+        Indicador == "Valor DCF (USD)" ~ "DCF Value",
+        Indicador == "Valor Graham Ajustado (USD)" ~ "Graham Adjusted Value",
+        Indicador == "Valor Intrínseco Final (USD)" ~ "Intrinsic Value Final",
+        Indicador == "Precio Compra Segura (USD)" ~ "Safe Buy Price",
+        Indicador == "Margen Seguridad" ~ "Margin of Safety",
         Indicador == "EPS interanual TTM" ~ "EPS this Y",
         Indicador == "Ventas interanual TTM" ~ "Sales Y/Y TTM",
         Indicador == "EPS próximo año" ~ "EPS next Y",
@@ -1791,6 +1829,10 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
         `Valor Intrínseco (USD)` = NA_real_,
         `Margen Intrínseco (%)` = NA_real_,
         `Valoración vs Mercado` = "N/D",
+        `Valor Intrínseco Final (USD)` = NA_real_,
+        `Precio Compra Segura (USD)` = NA_real_,
+        `Margen Seguridad (%)` = NA_real_,
+        `Veredicto Valor` = "Sin datos",
         Sector = "Desconocido",
         Interpretacion = "No fue posible obtener correctamente los datos de Finviz para este ticker."
       ),
@@ -1834,8 +1876,21 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
   graham_margin_val <- scored %>%
     filter(Indicador == "Margen Graham") %>%
     pull(Valor)
+  iv_final_val <- scored %>%
+    filter(Indicador == "Valor Intrínseco Final (USD)") %>%
+    pull(Valor)
+  safe_price_val <- scored %>%
+    filter(Indicador == "Precio Compra Segura (USD)") %>%
+    pull(Valor)
+  margin_final_val <- scored %>%
+    filter(Indicador == "Margen Seguridad") %>%
+    pull(Valor)
 
   graham_margin_val <- graham_margin_val %||% NA_real_
+  iv_final_val <- iv_final_val %||% NA_real_
+  safe_price_val <- safe_price_val %||% NA_real_
+  margin_final_val <- margin_final_val %||% NA_real_
+  veredicto_val <- veredicto_valor(margin_final_val)
   valoracion_txt <- if (!is.na(graham_margin_val)) {
     if (graham_margin_val >= 0) {
       paste0("Infravalorada (+", graham_margin_val, "%)")
@@ -1861,6 +1916,10 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
     `Valor Intrínseco (USD)` = graham_val %||% NA_real_,
     `Margen Intrínseco (%)` = graham_margin_val,
     `Valoración vs Mercado` = valoracion_txt,
+    `Valor Intrínseco Final (USD)` = iv_final_val,
+    `Precio Compra Segura (USD)` = safe_price_val,
+    `Margen Seguridad (%)` = margin_final_val,
+    `Veredicto Valor` = veredicto_val,
     Sector = raw$raw_Sector %||% "Desconocido",
     Interpretacion = interpretation
   )
