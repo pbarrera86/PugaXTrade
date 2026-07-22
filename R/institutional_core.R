@@ -1091,7 +1091,7 @@ extract_metrics <- function(raw, tech) {
   graham_margin <- graham_margin_pct(graham_num, price)
   dcf_val <- dcf_value_per_share(price, p_fcf, cash_sh, bvps, debt_eq, eps_5y)
   graham_adj <- graham_adjusted_value(eps_ttm, eps_5y)
-  iv_final <- intrinsic_value_final(dcf_val, graham_adj)
+  iv_final <- dcf_val
   safe_price <- safe_buy_price(iv_final, 10)
   margin_final <- margin_of_safety_pct(safe_price, price)
 
@@ -1826,9 +1826,6 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
         `Dist. SMA50 (%)` = NA_real_,
         `Dist. SMA200 (%)` = NA_real_,
         `Potencial a objetivo (%)` = NA_real_,
-        `Valor Intrínseco (USD)` = NA_real_,
-        `Margen Intrínseco (%)` = NA_real_,
-        `Valoración vs Mercado` = "N/D",
         `Valor Intrínseco Final (USD)` = NA_real_,
         `Precio Compra Segura (USD)` = NA_real_,
         `Margen Seguridad (%)` = NA_real_,
@@ -1870,12 +1867,6 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
   d200_val <- scored %>%
     filter(Indicador == "Dist. SMA200") %>%
     pull(Valor)
-  graham_val <- scored %>%
-    filter(Indicador == "Valor Graham (USD)") %>%
-    pull(Valor)
-  graham_margin_val <- scored %>%
-    filter(Indicador == "Margen Graham") %>%
-    pull(Valor)
   iv_final_val <- scored %>%
     filter(Indicador == "Valor Intrínseco Final (USD)") %>%
     pull(Valor)
@@ -1886,20 +1877,10 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
     filter(Indicador == "Margen Seguridad") %>%
     pull(Valor)
 
-  graham_margin_val <- graham_margin_val %||% NA_real_
   iv_final_val <- iv_final_val %||% NA_real_
   safe_price_val <- safe_price_val %||% NA_real_
   margin_final_val <- margin_final_val %||% NA_real_
   veredicto_val <- veredicto_valor(margin_final_val)
-  valoracion_txt <- if (!is.na(graham_margin_val)) {
-    if (graham_margin_val >= 0) {
-      paste0("Infravalorada (+", graham_margin_val, "%)")
-    } else {
-      paste0("Sobrevalorada (", graham_margin_val, "%)")
-    }
-  } else {
-    "N/D"
-  }
 
   summary <- tibble(
     Ticker = ticker,
@@ -1913,9 +1894,6 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
     `Dist. SMA50 (%)` = d50_val %||% NA_real_,
     `Dist. SMA200 (%)` = d200_val %||% NA_real_,
     `Potencial a objetivo (%)` = upside_val %||% NA_real_,
-    `Valor Intrínseco (USD)` = graham_val %||% NA_real_,
-    `Margen Intrínseco (%)` = graham_margin_val,
-    `Valoración vs Mercado` = valoracion_txt,
     `Valor Intrínseco Final (USD)` = iv_final_val,
     `Precio Compra Segura (USD)` = safe_price_val,
     `Margen Seguridad (%)` = margin_final_val,
@@ -2178,9 +2156,7 @@ inst_export_analysis_to_excel <- function(result, file) {
       `Dist. SMA20 (%)` = round(`Dist. SMA20 (%)`, 2),
       `Dist. SMA50 (%)` = round(`Dist. SMA50 (%)`, 2),
       `Dist. SMA200 (%)` = round(`Dist. SMA200 (%)`, 2),
-      `Potencial a objetivo (%)` = round(`Potencial a objetivo (%)`, 2),
-      `Valor Intrínseco (USD)` = round(`Valor Intrínseco (USD)`, 2),
-      `Margen Intrínseco (%)` = round(`Margen Intrínseco (%)`, 2)
+      `Potencial a objetivo (%)` = round(`Potencial a objetivo (%)`, 2)
     )
   sem_vals_res <- res_df$Semaforo
   res_df$Semaforo <- ""
