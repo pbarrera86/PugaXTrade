@@ -51,13 +51,6 @@ graham_adjusted_value <- function(eps_ttm, growth_5y_pct, base_pe = 8.5, aaa_yie
   eps_ttm * (base_pe + 2 * g) * (normal_yield / aaa_yield)
 }
 
-intrinsic_value_final <- function(dcf_val, graham_adj_val) {
-  vals <- c(dcf_val, graham_adj_val)
-  vals <- vals[!is.na(vals)]
-  if (length(vals) == 0) return(NA_real_)
-  mean(vals)
-}
-
 margin_of_safety_pct <- function(intrinsic_val, price) {
   if (is.na(intrinsic_val) || is.na(price) || price <= 0) return(NA_real_)
   round(100 * (intrinsic_val / price - 1), 2)
