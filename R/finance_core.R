@@ -710,7 +710,7 @@ build_indicator_table <- function(tk, m, raw) {
   graham_marg  <- graham_margin_pct(graham_num, price)
   dcf_val      <- dcf_value_per_share(price, p_fcf_raw, cash_sh, book_sh, debt_eq_raw, eps_5y_pct)
   graham_adj   <- graham_adjusted_value(eps_ttm_usd, eps_5y_pct)
-  iv_final     <- intrinsic_value_final(dcf_val, graham_adj)
+  iv_final     <- dcf_val
   safe_price   <- safe_buy_price(iv_final, 10)
   margin_final <- margin_of_safety_pct(safe_price, price)
 
