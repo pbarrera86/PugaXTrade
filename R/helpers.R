@@ -56,16 +56,9 @@ margin_of_safety_pct <- function(intrinsic_val, price) {
   round(100 * (intrinsic_val / price - 1), 2)
 }
 
-# Precio de entrada "seguro": el valor intrínseco con un descuento (margen de seguridad clásico de Graham).
-# Con safety_margin_pct = 10, solo se considera atractivo comprar por debajo del 90% del valor intrínseco estimado.
-safe_buy_price <- function(intrinsic_val, safety_margin_pct = 10) {
-  if (is.na(intrinsic_val)) return(NA_real_)
-  intrinsic_val * (1 - safety_margin_pct / 100)
-}
-
 # INFRAVALORADA (margen > +10%) / EN VALOR JUSTO (-10% a +10%) / SOBREVALORADA (< -10%)
-# El porcentaje mostrado es el propio margen de seguridad: cuánto está el precio actual
-# por debajo (+) o por encima (-) del precio de compra seguro (valor intrínseco -10%).
+# El porcentaje mostrado es cuánto está el precio actual por debajo (+) o por encima (-)
+# del valor intrínseco (DCF).
 veredicto_valor <- function(margin_pct) {
   if (is.na(margin_pct)) return("Sin datos")
   pct_txt <- sprintf("%+.1f%%", margin_pct)
