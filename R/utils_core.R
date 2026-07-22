@@ -60,10 +60,26 @@ utils_read_finviz_table <- function(sym) {
 
   keys <- txt[seq(1, length(txt), by = 2)]
   vals <- txt[seq(2, length(txt), by = 2)]
-  
+
   # IMPORTANTE: Guardar con claves originales (igual que modulo institucional)
   # Esto permite que getv_robust busque "P/E", "Gross Margin" etc. directamente
   out <- setNames(as.list(vals), keys)
+
+  # Sector: no está en table.snapshot-table2, es un link de tag aparte (href con f=sec_...)
+  sector <- tryCatch(
+    {
+      sec_links <- rvest::html_elements(html, "a[href*='f=sec_']")
+      v <- NA_character_
+      if (length(sec_links) >= 1) {
+        txt_sec <- trimws(rvest::html_text(sec_links[1], trim = TRUE))
+        if (nchar(txt_sec) > 0 && nchar(txt_sec) < 40) v <- txt_sec
+      }
+      v
+    },
+    error = function(e) NA_character_
+  )
+  out[["Sector"]] <- sector
+
   out
 }
 
