@@ -133,25 +133,42 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
     })
 
     # ---------------- Tarea en segundo plano ----------------
+    # Trabajo pesado en un proceso R independiente.
+    # Preferimos mirai (proceso efímero propio): no depende del plan global de
+    # `future`, que el análisis institucional puede dejar en "sequential" y
+    # entonces bloquearía la sesión (sin refrescar la barra de avance).
+    ext_worker_job <- function(app_dir, ticks, umbral, q_sel, min_caidas, cache_h, prog_file) {
+      setwd(app_dir)
+      suppressWarnings(suppressMessages(library(quantmod)))
+      source(file.path(app_dir, "R", "extremos_core.R"), local = TRUE)
+      ext_run_screener(
+        ticks,
+        umbral = umbral, q_sel = q_sel, min_caidas = min_caidas,
+        max_age_hours = cache_h,
+        progress_cb = function(k, n, tk) {
+          try(writeLines(sprintf("%d|%d|%s", k, n, tk), prog_file), silent = TRUE)
+        }
+      )
+    }
+    use_mirai <- requireNamespace("mirai", quietly = TRUE)
+    message("[EXT] Worker en segundo plano: ", if (use_mirai) "mirai (proceso propio)" else "future")
+
     ext_task <- tryCatch(
       shiny::ExtendedTask$new(function(ticks, umbral, q_sel, min_caidas, cache_h, prog_file) {
-        promises::future_promise(
-          {
-            suppressWarnings(suppressMessages({
-              library(quantmod)
-            }))
-            source("R/extremos_core.R", local = TRUE)
-            ext_run_screener(
-              ticks,
-              umbral = umbral, q_sel = q_sel, min_caidas = min_caidas,
-              max_age_hours = cache_h,
-              progress_cb = function(k, n, tk) {
-                try(writeLines(sprintf("%d|%d|%s", k, n, tk), prog_file), silent = TRUE)
-              }
-            )
-          },
-          seed = TRUE
-        )
+        app_dir <- normalizePath(getwd())
+        if (use_mirai) {
+          m <- mirai::mirai(
+            job(app_dir, ticks, umbral, q_sel, min_caidas, cache_h, prog_file),
+            job = ext_worker_job, app_dir = app_dir, ticks = ticks, umbral = umbral,
+            q_sel = q_sel, min_caidas = min_caidas, cache_h = cache_h, prog_file = prog_file
+          )
+          promises::as.promise(m)
+        } else {
+          promises::future_promise(
+            ext_worker_job(app_dir, ticks, umbral, q_sel, min_caidas, cache_h, prog_file),
+            seed = TRUE
+          )
+        }
       }),
       error = function(e) {
         message("[EXT] ExtendedTask no disponible: ", e$message)
