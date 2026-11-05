@@ -158,6 +158,7 @@ source("R/helpers.R", encoding = "UTF-8")
 source("R/db.R", encoding = "UTF-8") # pool + helpers Postgres
 source("R/finance_core.R", encoding = "UTF-8") # ANÁLISIS + Excel
 source("R/institutional_core.R", encoding = "UTF-8")
+source("R/extremos_core.R", encoding = "UTF-8") # Screener Extremos Locales (QMin/QMax)
 # auth_helpers.R (Configuración SMTP y URL base)
 tryCatch(source("R/auth_helpers.R", encoding = "UTF-8"), error = function(e) {
   message("Warning: Could not source R/auth_helpers.R: ", e$message)
@@ -167,6 +168,7 @@ source("R/admin_module.R", encoding = "UTF-8")
 source("R/auth_module.R", encoding = "UTF-8")
 source("R/institutional_ui_helpers.R", encoding = "UTF-8")
 source("R/institutional_module.R", encoding = "UTF-8")
+source("R/extremos_module.R", encoding = "UTF-8")
 # standard_analysis_module.R eliminado — solo existe el módulo institucional
 source("R/ui_modules.R", encoding = "UTF-8")
 source("R/stripe_webhooks.R", encoding = "UTF-8")
