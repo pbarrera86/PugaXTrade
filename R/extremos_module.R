@@ -66,7 +66,7 @@ extremos_ui <- function(id) {
       ),
       textAreaInput(
         ns("tickers"), "Tickers a analizar (puedes escribir o pegar los que quieras)",
-        value = if (exists("inst_default_tickers_text", mode = "function")) inst_default_tickers_text() else "NVO, AAPL, MSFT",
+        value = ext_default_tickers_text(),
         rows = 4, width = "100%"
       ),
       uiOutput(ns("count_ui")),
@@ -224,9 +224,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
     )
 
     observeEvent(input$reset_btn, {
-      if (exists("inst_default_tickers_text", mode = "function")) {
-        updateTextAreaInput(session, "tickers", value = inst_default_tickers_text())
-      }
+      updateTextAreaInput(session, "tickers", value = ext_default_tickers_text())
     })
 
     params <- reactive({
