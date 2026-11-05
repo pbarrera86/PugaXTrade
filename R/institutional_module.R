@@ -129,7 +129,7 @@ institutional_ui <- function(id) {
         )
       ), # Fin tabPanel Dashboard
       tabPanel(
-        "Extremos Locales (QMin)",
+        "Extremos Locales",
         extremos_ui(ns("ext"))
       ),
       tabPanel(
