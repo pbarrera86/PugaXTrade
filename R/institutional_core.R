@@ -1015,7 +1015,9 @@ getv_robust <- function(x, keys) {
     "Beta" = num(v("summaryDetail", "beta"), 4),
     "Dividend %" = pct(v("summaryDetail", "dividendYield"))
   )
-  qtype <- j$quoteType$quoteType %||% ""
+  qtype <- j$quoteType$quoteType %||% j$price$quoteType %||% ""
+  nombre <- toupper(paste(j$price$longName %||% "", j$price$shortName %||% ""))
+  if (!nzchar(qtype) && grepl("ISHARES|TRAC|ETF|FONDO|FUND", nombre)) qtype <- "ETF"
   sector <- j$assetProfile$sector
   out$raw_Sector <- if (!is.null(sector) && nzchar(sector)) {
     sector
