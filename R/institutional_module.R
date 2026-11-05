@@ -129,6 +129,10 @@ institutional_ui <- function(id) {
         )
       ), # Fin tabPanel Dashboard
       tabPanel(
+        "Extremos Locales (QMin)",
+        extremos_ui(ns("ext"))
+      ),
+      tabPanel(
         "Guía de Uso (Playbook)",
         br(),
         inst_playbook_tab_ui()
@@ -164,6 +168,9 @@ institutional_server <- function(id, user_reactive) {
       left <- suppressWarnings(as.numeric(db_trial_days_left(u)[1]))
       isTRUE(!is.na(left) && left >= 0)
     })
+
+    # ---- Módulo: Screener de Extremos Locales (pestaña "Extremos Locales (QMin)") ----
+    extremos_server("ext", can_analyze = can_analyze)
 
     output$lock_banner_ui <- renderUI({
       u <- user_reactive()
