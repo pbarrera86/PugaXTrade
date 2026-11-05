@@ -46,7 +46,8 @@ ext_get_prices <- function(ticker, from = as.Date("1990-01-01"), max_age_hours =
     }
   }
 
-  y_ticker <- gsub("\\.", "-", ticker)
+  # .MX (Bolsa Mexicana) se conserva; clases de EE. UU. usan guion (BRK.B -> BRK-B)
+  y_ticker <- if (grepl("\\.MX$", toupper(ticker))) toupper(ticker) else gsub(".", "-", ticker, fixed = TRUE)
   xt <- suppressWarnings(tryCatch(
     quantmod::getSymbols(
       Symbols = y_ticker, src = "yahoo", from = from, to = Sys.Date() + 1,

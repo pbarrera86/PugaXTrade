@@ -917,13 +917,128 @@ getv_robust <- function(x, keys) {
   NA_character_
 }
 
+# ---------------------------------------------------------
+# Yahoo Finanzas: fundamentales para tickers .MX (Bolsa Mexicana / SIC)
+# Finviz solo cubre EE. UU.; para .MX se arma el mismo formato de "payload"
+# (lista de textos con las mismas llaves que Finviz) desde quoteSummary de Yahoo.
+# ---------------------------------------------------------
+.yahoo_quote_summary <- function(sym) {
+  modules <- "price,summaryDetail,defaultKeyStatistics,financialData,assetProfile,earningsTrend,quoteType"
+  base <- sprintf("https://query2.finance.yahoo.com/v10/finance/quoteSummary/%s?modules=%s",
+    utils::URLencode(sym, reserved = TRUE), modules)
+  ses <- tryCatch(quantmod:::.yahooSession(), error = function(e) NULL)
+  txt <- NULL
+  for (intento in 1:2) {
+    txt <- tryCatch({
+      if (!is.null(ses) && !is.null(ses$h)) {
+        url <- if (!is.null(ses$crumb)) paste0(base, "&crumb=", utils::URLencode(ses$crumb, reserved = TRUE)) else base
+        r <- curl::curl_fetch_memory(url, handle = ses$h)
+        if (r$status_code == 200) rawToChar(r$content) else NULL
+      } else {
+        r <- httr::GET(base, httr::user_agent("Mozilla/5.0"), httr::timeout(20))
+        if (httr::status_code(r) == 200) httr::content(r, as = "text", encoding = "UTF-8") else NULL
+      }
+    }, error = function(e) NULL)
+    if (!is.null(txt)) break
+    Sys.sleep(1)
+    ses <- tryCatch(quantmod:::.yahooSession(is.retry = TRUE), error = function(e) ses)
+  }
+  if (is.null(txt)) return(NULL)
+  js <- tryCatch(jsonlite::fromJSON(txt, simplifyVector = FALSE), error = function(e) NULL)
+  res <- js$quoteSummary$result
+  if (is.null(res) || length(res) == 0) return(NULL)
+  res[[1]]
+}
+
+.read_yahoo_fundamentals <- function(sym) {
+  j <- .yahoo_quote_summary(sym)
+  if (is.null(j)) return(NULL)
+  v <- function(mod, key) {
+    x <- j[[mod]][[key]]
+    if (is.list(x)) x <- x$raw
+    if (is.null(x) || length(x) == 0 || !is.numeric(x)) NA_real_ else as.numeric(x)
+  }
+  num <- function(x, d = 4) if (is.na(x)) "-" else formatC(x, format = "f", digits = d)
+  pct <- function(x) if (is.na(x)) "-" else paste0(formatC(100 * x, format = "f", digits = 2), "%")
+
+  price <- v("financialData", "currentPrice")
+  if (is.na(price)) price <- v("price", "regularMarketPrice")
+  if (is.na(price)) return(NULL)
+
+  mcap <- v("price", "marketCap")
+  if (is.na(mcap)) mcap <- v("summaryDetail", "marketCap")
+  fcf <- v("financialData", "freeCashflow")
+  de <- v("financialData", "debtToEquity") # Yahoo lo da en %, Finviz como razón
+  trend <- j$earningsTrend$trend
+  tg <- function(per) {
+    if (is.null(trend)) return(NA_real_)
+    for (t in trend) if (identical(t$period, per)) {
+      g <- t$growth
+      if (is.list(g)) g <- g$raw
+      return(if (is.null(g) || !is.numeric(g)) NA_real_ else as.numeric(g))
+    }
+    NA_real_
+  }
+  fpe <- v("summaryDetail", "forwardPE")
+  if (is.na(fpe)) fpe <- v("defaultKeyStatistics", "forwardPE")
+
+  out <- list(
+    "Price" = num(price, 4),
+    "Target Price" = num(v("financialData", "targetMeanPrice"), 4),
+    "EPS (ttm)" = num(v("defaultKeyStatistics", "trailingEps"), 4),
+    "Book/sh" = num(v("defaultKeyStatistics", "bookValue"), 4),
+    "Cash/sh" = num(v("financialData", "totalCashPerShare"), 4),
+    "Debt/Eq" = num(if (is.na(de)) NA_real_ else de / 100, 4),
+    "P/E" = num(v("summaryDetail", "trailingPE"), 4),
+    "PEG" = num(v("defaultKeyStatistics", "pegRatio"), 4),
+    "Forward P/E" = num(fpe, 4),
+    "P/S" = num(v("summaryDetail", "priceToSalesTrailing12Months"), 4),
+    "P/FCF" = num(if (!is.na(mcap) && !is.na(fcf) && fcf > 0) mcap / fcf else NA_real_, 4),
+    "EV/EBITDA" = num(v("defaultKeyStatistics", "enterpriseToEbitda"), 4),
+    "P/B" = num(v("defaultKeyStatistics", "priceToBook"), 4),
+    "EPS this Y" = pct(v("financialData", "earningsGrowth")),
+    "Sales Y/Y TTM" = pct(v("financialData", "revenueGrowth")),
+    "EPS next Y" = pct(tg("+1y")),
+    "EPS next 5Y" = pct(tg("+5y")),
+    "Sales Q/Q" = pct(v("financialData", "revenueGrowth")),
+    "EPS Q/Q" = pct(v("defaultKeyStatistics", "earningsQuarterlyGrowth")),
+    "Gross Margin" = pct(v("financialData", "grossMargins")),
+    "Oper. Margin" = pct(v("financialData", "operatingMargins")),
+    "Profit Margin" = pct(v("financialData", "profitMargins")),
+    "ROE" = pct(v("financialData", "returnOnEquity")),
+    "ROA" = pct(v("financialData", "returnOnAssets")),
+    "Current Ratio" = num(v("financialData", "currentRatio"), 4),
+    "Short Float" = pct(v("defaultKeyStatistics", "shortPercentOfFloat")),
+    "Inst Own" = pct(v("defaultKeyStatistics", "heldPercentInstitutions")),
+    "Payout" = pct(v("summaryDetail", "payoutRatio")),
+    "Recom" = num(v("financialData", "recommendationMean"), 2),
+    "Beta" = num(v("summaryDetail", "beta"), 4),
+    "Dividend %" = pct(v("summaryDetail", "dividendYield"))
+  )
+  qtype <- j$quoteType$quoteType %||% ""
+  sector <- j$assetProfile$sector
+  out$raw_Sector <- if (!is.null(sector) && nzchar(sector)) {
+    sector
+  } else if (qtype %in% c("ETF", "MUTUALFUND")) {
+    "ETF / Fondo"
+  } else {
+    "Desconocido"
+  }
+  out$raw_Currency <- j$price$currency %||% "MXN"
+  out$raw_Source <- "Yahoo Finanzas"
+  out$raw_keys <- names(out)[!startsWith(names(out), "raw_")]
+  out$raw_vals <- unname(unlist(out[out$raw_keys]))
+  out
+}
+
 get_finviz_payload <- function(ticker, use_postgres_cache = FALSE) {
   cached <- cache_get(ticker, use_postgres_cache = use_postgres_cache)
   if (!is.null(cached)) {
     return(cached)
   }
 
-  raw <- .read_finviz_table(ticker)
+  # Tickers mexicanos (.MX): Finviz no los cubre -> fundamentales de Yahoo Finanzas
+  raw <- if (utils_is_mx_ticker(ticker)) .read_yahoo_fundamentals(ticker) else .read_finviz_table(ticker)
   if (is.null(raw)) {
     return(NULL)
   }
@@ -933,7 +1048,7 @@ get_finviz_payload <- function(ticker, use_postgres_cache = FALSE) {
 }
 
 .yf_xt <- function(ticker, from = Sys.Date() - 365, to = Sys.Date()) {
-  y_ticker <- gsub("\\.", "-", ticker)
+  y_ticker <- utils_yahoo_symbol(ticker) # .MX se conserva; BRK.B -> BRK-B
 
   suppressWarnings({
     xt <- try(
@@ -1805,7 +1920,7 @@ build_interpretation <- function(ticker, score_total, semaforo, tendencia, detai
 # =========================================================
 
 analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_postgres_cache = FALSE, progress_cb = NULL, base_pct = 0, step_pct = 100, spy_data = NULL) {
-  if (is.function(progress_cb)) progress_cb(msg = paste(ticker, "- Finviz (1/3)"), pct = base_pct + step_pct * 0.15)
+  if (is.function(progress_cb)) progress_cb(msg = paste(ticker, if (utils_is_mx_ticker(ticker)) "- Yahoo Finanzas fundamentales (1/3)" else "- Finviz (1/3)"), pct = base_pct + step_pct * 0.15)
   raw <- get_finviz_payload(ticker, use_postgres_cache = use_postgres_cache)
 
   if (is.function(progress_cb)) progress_cb(msg = paste(ticker, "- Yahoo Finance (2/3)"), pct = base_pct + step_pct * 0.45)
@@ -1829,7 +1944,11 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
         `Valor Intrínseco Final (USD)` = NA_real_,
         `Veredicto Valor` = "Sin datos",
         Sector = "Desconocido",
-        Interpretacion = "No fue posible obtener correctamente los datos de Finviz para este ticker."
+        Interpretacion = if (utils_is_mx_ticker(ticker)) {
+          "No fue posible obtener los datos de Yahoo Finanzas para este ticker (.MX). Verifica que el símbolo exista en Yahoo Finanzas."
+        } else {
+          "No fue posible obtener correctamente los datos de Finviz para este ticker."
+        }
       ),
       details = tibble(),
       history = hist$history
@@ -1893,6 +2012,12 @@ analyze_one_ticker <- function(ticker, investor_profile = "Balanceado", use_post
     Sector = raw$raw_Sector %||% "Desconocido",
     Interpretacion = interpretation
   )
+  if (utils_is_mx_ticker(ticker)) {
+    summary$Interpretacion <- paste0(
+      "[Emisora mexicana · datos de Yahoo Finanzas · precios en ", raw$raw_Currency %||% "MXN", "] ",
+      summary$Interpretacion
+    )
+  }
 
   list(summary = summary, details = scored, history = hist$history)
 }
