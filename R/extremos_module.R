@@ -18,11 +18,20 @@ extremos_ui <- function(id) {
         "la caída desde su último máximo ya es mayor que la de la mayoría de sus caídas históricas ",
         "entre extremos locales. Es una zona de posible rebote o cambio de tendencia al alza."
       ),
+      fluidRow(
+        column(8, textInput(ns("add_input"), "Agregar tickers (separados por coma o espacio)",
+          placeholder = "Ej.: NVO, PFE, AMD", width = "100%")),
+        column(2, div(style = "margin-top:32px;", actionButton(ns("add_btn"), tagList(icon("plus"), "Agregar"),
+          class = "btn btn-info w-100"))),
+        column(2, div(style = "margin-top:32px;", actionButton(ns("clear_btn"), tagList(icon("trash"), "Limpiar lista"),
+          class = "btn btn-danger w-100")))
+      ),
       textAreaInput(
-        ns("tickers"), "Tickers",
+        ns("tickers"), "Tickers a analizar (puedes escribir o pegar los que quieras)",
         value = if (exists("inst_default_tickers_text", mode = "function")) inst_default_tickers_text() else "NVO, AAPL, MSFT",
         rows = 4, width = "100%"
       ),
+      uiOutput(ns("count_ui")),
       fluidRow(
         column(3, selectInput(ns("q_sel"), "Nivel QMin a perforar",
           choices = c("QMin 80" = 80, "QMin 85" = 85, "QMin 90" = 90, "QMin 95" = 95, "QMin 99" = 99),
@@ -72,7 +81,56 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    rv <- reactiveValues(result = NULL, running = FALSE, prog_file = NULL, msg = NULL)
+    rv <- reactiveValues(
+      result = NULL, running = FALSE, prog_file = NULL,
+      status = "idle", # idle | running | ok | error
+      msg = NULL, n_total = 0L, started = NULL
+    )
+
+    # Controles que se bloquean mientras corre el proceso
+    ctrl_ids <- c("run_btn", "reset_btn", "dl_excel", "add_btn", "clear_btn", "add_input",
+                  "tickers", "q_sel", "umbral", "min_caidas", "cache_h")
+    set_busy <- function(busy) {
+      for (i in ctrl_ids) {
+        if (busy) shinyjs::disable(i) else shinyjs::enable(i)
+      }
+      if (busy) {
+        shinyjs::html("run_btn", as.character(tagList(icon("spinner", class = "fa-spin"), " Procesando...")))
+      } else {
+        shinyjs::html("run_btn", as.character(tagList(icon("play"), " Buscar empresas")))
+      }
+    }
+
+    parse_ticks <- function(txt) {
+      x <- unlist(strsplit(toupper(txt %||% ""), "[,;\\s]+", perl = TRUE))
+      x <- gsub("[^A-Z0-9.\\-^=]", "", x)
+      unique(x[nzchar(x)])
+    }
+
+    output$count_ui <- renderUI({
+      n <- length(parse_ticks(input$tickers))
+      div(class = "text-muted", style = "margin:-6px 0 10px 0; font-size:.9em;", sprintf("%d tickers en la lista", n))
+    })
+
+    observeEvent(input$add_btn, {
+      nuevos <- parse_ticks(input$add_input)
+      if (!length(nuevos)) {
+        showNotification("Escribe al menos un ticker para agregar.", type = "warning")
+        return()
+      }
+      actuales <- parse_ticks(input$tickers)
+      agregados <- setdiff(nuevos, actuales)
+      updateTextAreaInput(session, "tickers", value = paste(c(actuales, agregados), collapse = ", "))
+      updateTextInput(session, "add_input", value = "")
+      showNotification(
+        if (length(agregados)) sprintf("Agregados: %s", paste(agregados, collapse = ", ")) else "Esos tickers ya estaban en la lista.",
+        type = "message"
+      )
+    })
+
+    observeEvent(input$clear_btn, {
+      updateTextAreaInput(session, "tickers", value = "")
+    })
 
     # ---------------- Tarea en segundo plano ----------------
     ext_task <- tryCatch(
@@ -116,17 +174,47 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
       )
     })
 
+    finish_ok <- function(res) {
+      rv$result <- res
+      rv$running <- FALSE
+      if (is.null(res) || is.null(res$todos) || nrow(res$todos) == 0) {
+        rv$status <- "error"
+        rv$msg <- if (!is.null(res) && length(res$fallidos)) {
+          sprintf("No se pudieron obtener datos de ningún ticker (%s). Verifica que los símbolos existan en Yahoo Finance.",
+            paste(head(res$fallidos, 20), collapse = ", "))
+        } else {
+          "No se obtuvieron resultados. Verifica los tickers e intenta de nuevo."
+        }
+        showNotification(rv$msg, type = "error", duration = 10)
+      } else {
+        rv$status <- "ok"
+        seg <- if (!is.null(rv$started)) round(as.numeric(difftime(Sys.time(), rv$started, units = "secs"))) else NA
+        rv$msg <- sprintf(
+          "Proceso concluido con éxito. %d empresas analizadas, %d cumplen la condición%s%s.",
+          nrow(res$todos), nrow(res$candidatos),
+          if (length(res$fallidos)) sprintf(", %d sin datos suficientes (%s)", length(res$fallidos), paste(head(res$fallidos, 15), collapse = ", ")) else "",
+          if (!is.na(seg)) sprintf(" · Tiempo: %d s", seg) else ""
+        )
+        showNotification("Proceso concluido con éxito.", type = "message", duration = 6)
+      }
+      set_busy(FALSE)
+    }
+
+    finish_error <- function(err) {
+      rv$running <- FALSE
+      rv$status <- "error"
+      rv$msg <- paste("Ocurrió un error durante el proceso:", err)
+      showNotification(rv$msg, type = "error", duration = 10)
+      set_busy(FALSE)
+    }
+
     observeEvent(input$run_btn, {
+      if (isTRUE(rv$running)) return()
       if (!isTRUE(can_analyze())) {
         showNotification("Tu prueba finalizó o no tienes membresía activa.", type = "warning")
         return()
       }
-      ticks <- if (exists("inst_parse_tickers", mode = "function")) {
-        inst_parse_tickers(input$tickers)
-      } else {
-        unique(toupper(trimws(unlist(strsplit(input$tickers, "[,;\\s]+")))))
-      }
-      ticks <- ticks[nzchar(ticks)]
+      ticks <- parse_ticks(input$tickers)
       if (length(ticks) == 0) {
         showNotification("Ingresa al menos un ticker válido.", type = "warning")
         return()
@@ -134,9 +222,12 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
       p <- params()
       rv$prog_file <- tempfile("ext_prog_", fileext = ".txt")
       writeLines(sprintf("0|%d|", length(ticks)), rv$prog_file)
+      rv$n_total <- length(ticks)
+      rv$started <- Sys.time()
       rv$running <- TRUE
+      rv$status <- "running"
       rv$msg <- NULL
-      shinyjs::disable("run_btn")
+      set_busy(TRUE)
 
       if (!is.null(ext_task)) {
         ok <- tryCatch({
@@ -149,55 +240,74 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
         if (ok) return()
       }
 
-      # Fallback sincrónico
-      res <- withProgress(message = "Analizando extremos locales...", value = 0, {
-        ext_run_screener(
-          ticks, umbral = p$umbral, q_sel = p$q_sel, min_caidas = p$min_caidas,
-          max_age_hours = p$cache_h,
-          progress_cb = function(k, n, tk) incProgress(1 / n, detail = tk)
-        )
-      })
-      rv$result <- res
-      rv$running <- FALSE
-      shinyjs::enable("run_btn")
+      # Fallback sincrónico (si no hay workers en segundo plano)
+      tryCatch({
+        res <- withProgress(message = "Analizando extremos locales...", value = 0, {
+          ext_run_screener(
+            ticks, umbral = p$umbral, q_sel = p$q_sel, min_caidas = p$min_caidas,
+            max_age_hours = p$cache_h,
+            progress_cb = function(k, n, tk) incProgress(1 / n, detail = tk)
+          )
+        })
+        finish_ok(res)
+      }, error = function(e) finish_error(conditionMessage(e)))
     })
 
     if (!is.null(ext_task)) {
-      observe({
+      observeEvent(ext_task$status(), {
         st <- ext_task$status()
+        if (!isTRUE(rv$running)) return()
         if (st == "success") {
-          rv$result <- ext_task$result()
-          rv$running <- FALSE
-          shinyjs::enable("run_btn")
+          res <- tryCatch(ext_task$result(), error = function(e) NULL)
+          finish_ok(res)
         } else if (st == "error") {
-          rv$running <- FALSE
-          shinyjs::enable("run_btn")
-          err <- tryCatch({ ext_task$result(); "" }, error = function(e) conditionMessage(e))
-          rv$msg <- paste("Error en el análisis:", err)
-          showNotification(rv$msg, type = "error", duration = 8)
+          err <- tryCatch({ ext_task$result(); "error desconocido" }, error = function(e) conditionMessage(e))
+          finish_error(err)
         }
-      })
+      }, ignoreInit = TRUE)
     }
 
-    # ---------------- Progreso real (leído del worker) ----------------
+    # ---------------- Barra de avance y estado final ----------------
     output$progress_ui <- renderUI({
-      if (!isTRUE(rv$running)) {
-        if (!is.null(rv$msg)) return(div(class = "alert alert-danger mt-2", rv$msg))
-        return(NULL)
+      st <- rv$status
+      bar <- function(pct, cls, label) {
+        div(class = "progress", style = "height:26px; margin-top:6px;",
+          div(class = paste("progress-bar", cls), role = "progressbar",
+            style = sprintf("width:%d%%; font-weight:700; font-size:.95em;", pct),
+            `aria-valuenow` = pct, `aria-valuemin` = 0, `aria-valuemax` = 100, label))
       }
-      invalidateLater(1000)
-      ln <- tryCatch(readLines(rv$prog_file, warn = FALSE)[1], error = function(e) "0|1|")
-      parts <- strsplit(ln %||% "0|1|", "|", fixed = TRUE)[[1]]
-      k <- suppressWarnings(as.integer(parts[1])); n <- suppressWarnings(as.integer(parts[2]))
-      tk <- if (length(parts) >= 3) parts[3] else ""
-      if (is.na(k)) k <- 0L
-      if (is.na(n) || n < 1) n <- 1L
-      pct <- round(100 * k / n)
-      tagList(
-        div(style = "font-weight:600; margin:8px 0;", sprintf("Analizando %s (%d de %d) — %d%%", tk, k, n, pct)),
-        div(class = "progress", div(class = "progress-bar progress-bar-striped progress-bar-animated",
-          role = "progressbar", style = paste0("width:", pct, "%;"), paste0(pct, "%")))
-      )
+      if (st == "running") {
+        invalidateLater(700)
+        ln <- tryCatch(readLines(rv$prog_file, warn = FALSE)[1], error = function(e) NA_character_)
+        parts <- strsplit(ifelse(is.na(ln), "0|1|", ln), "|", fixed = TRUE)[[1]]
+        k <- suppressWarnings(as.integer(parts[1])); n <- suppressWarnings(as.integer(parts[2]))
+        tk <- if (length(parts) >= 3) parts[3] else ""
+        if (is.na(k)) k <- 0L
+        if (is.na(n) || n < 1) n <- max(1L, rv$n_total)
+        # k = ticker en proceso; se cuenta como terminado el anterior
+        done <- max(0L, k - 1L)
+        pct <- as.integer(floor(100 * done / n))
+        seg <- round(as.numeric(difftime(Sys.time(), rv$started, units = "secs")))
+        return(tagList(
+          div(style = "font-weight:600; margin-top:10px;",
+            icon("spinner", class = "fa-spin"),
+            if (nzchar(tk)) sprintf(" Procesando %s (%d de %d) · %d s", tk, k, n, seg) else sprintf(" Preparando %d tickers...", n)),
+          bar(max(pct, 2L), "progress-bar-striped progress-bar-animated bg-info", sprintf("%d%%", pct))
+        ))
+      }
+      if (st == "ok") {
+        return(tagList(
+          bar(100L, "bg-success", "100%"),
+          div(class = "alert alert-success mt-2", style = "margin-bottom:0;", icon("check-circle"), " ", rv$msg)
+        ))
+      }
+      if (st == "error") {
+        return(tagList(
+          bar(100L, "bg-danger", "Error"),
+          div(class = "alert alert-danger mt-2", style = "margin-bottom:0;", icon("exclamation-triangle"), " ", rv$msg)
+        ))
+      }
+      NULL
     })
 
     # ---------------- Tabla de candidatos ----------------
