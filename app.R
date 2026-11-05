@@ -89,6 +89,20 @@ my_theme <- bs_theme(
 
 # Helper centralizado para verificar super-admin se movió a R/db.R para visibilidad global modular.
 
+# ----------------- Versión de archivos estáticos (cache-busting) -----------------
+# Agrega ?v=<hash> a script.js / styles.css para que el navegador descargue la
+# versión nueva después de cada despliegue en lugar de usar la copia en caché.
+.asset_ver <- local({
+  cache <- list()
+  function(f) {
+    if (is.null(cache[[f]])) {
+      h <- tryCatch(unname(tools::md5sum(file.path("www", f))), error = function(e) NA_character_)
+      cache[[f]] <<- if (is.na(h)) format(Sys.time(), "%Y%m%d%H%M") else substr(h, 1, 10)
+    }
+    cache[[f]]
+  }
+})
+
 # ----------------- Lectura de cookie HttpOnly desde HTTP header -----------------
 # El browser envía automáticamente la cookie en cada request.
 # La leemos del header HTTP_COOKIE para inyectar el token en el HTML inicial
@@ -921,8 +935,8 @@ ui <- function(req) {
   # HEAD dinámico: si hay cookie válida, inyecta script de auto-login
   dynamic_head <- tags$head(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
-    tags$script(src = "script.js"),
-    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
+    tags$script(src = paste0("script.js?v=", .asset_ver("script.js"))),
+    tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", .asset_ver("styles.css"))),
     if (nzchar(cookie_tok)) {
       # Inyectar token en el HTML para que Shiny lo reciba en shiny:connected
       # El token es solo caracteres hex (ya sanitizado arriba)
