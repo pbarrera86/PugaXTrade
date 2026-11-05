@@ -564,7 +564,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
 # Guía de uso e interpretación — Extremos Locales (QMin)
 # =========================================================
 extremos_guide_ui <- function() {
-  h4s <- "color: #0f172a; font-weight: bold;"
+  h4s <- "color: #ffcc66; font-weight: bold; margin-top: 6px;"
   div(
     class = "card p-4 mb-4",
     style = "max-width: 900px; margin: 0 auto; font-size: 1.05em;",
