@@ -150,7 +150,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
 
     parse_ticks <- function(txt) {
       x <- unlist(strsplit(toupper(txt %||% ""), "[,;\\s]+", perl = TRUE))
-      x <- gsub("[^A-Z0-9.\\-^=]", "", x)
+      x <- gsub("[^A-Z0-9.^=-]", "", x) # conserva el guion (LIVEPOLC-1.MX, MFRISCOA-1.MX)
       unique(x[nzchar(x)])
     }
 
@@ -570,7 +570,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
           d$last_min$price, format(d$last_min$date, "%Y-%m-%d"),
           trimws(pref), if (modo == "max") "último mínimo" else "último máximo"), font = list(size = 12)),
         xaxis = list(title = "Fecha"),
-        yaxis = list(title = "Precio (USD)"),
+        yaxis = list(title = if (grepl("\\.MX$", tk)) "Precio (MXN)" else "Precio (USD)"),
         legend = list(orientation = "h", x = 0, y = -0.18)
       )
     })
