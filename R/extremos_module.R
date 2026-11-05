@@ -19,7 +19,7 @@ ext_modo_info <- function(modo) {
       mov = "Subida Actual", media = "Media Subidas", n = "# Subidas",
       nivel = "Nivel Superado", cond = "por encima de su",
       zona = "posible zona de techo o toma de utilidades",
-      tramos = "subidas", color = "#ff6b6b"
+      tramos = "subidas", color = "#2ecc71"
     )
   } else {
     list(
@@ -28,7 +28,7 @@ ext_modo_info <- function(modo) {
       mov = "Caída Actual", media = "Media Caídas", n = "# Caídas",
       nivel = "Nivel Perforado", cond = "por debajo de su",
       zona = "posible zona de rebote o cambio de tendencia al alza",
-      tramos = "caídas", color = "#2ecc71"
+      tramos = "caídas", color = "#ff6b6b"
     )
   }
 }
@@ -53,8 +53,8 @@ extremos_ui <- function(id) {
       p(
         class = "text-muted", style = "margin-bottom:12px;",
         "Compara el movimiento actual de cada empresa contra sus propios movimientos históricos entre extremos locales. ",
-        HTML("<b style='color:#2ecc71;'>Mínimos:</b> la caída desde su último máximo ya supera a la mayoría de sus caídas (posible rebote). "),
-        HTML("<b style='color:#ff6b6b;'>Máximos:</b> la subida desde su último mínimo ya supera a la mayoría de sus subidas (posible techo).")
+        HTML("<b style='color:#ff6b6b;'>Mínimos:</b> la caída desde su último máximo ya supera a la mayoría de sus caídas (posible rebote). "),
+        HTML("<b style='color:#2ecc71;'>Máximos:</b> la subida desde su último mínimo ya supera a la mayoría de sus subidas (posible techo).")
       ),
       fluidRow(
         column(8, textInput(ns("add_input"), "Agregar tickers (separados por coma o espacio)",
@@ -87,9 +87,9 @@ extremos_ui <- function(id) {
       ),
       fluidRow(
         column(6, actionButton(ns("run_min"), ext_btn_label("min"),
-          class = "btn btn-success w-100 mb-2", style = "padding:10px 6px; line-height:1.25;")),
+          class = "btn btn-danger w-100 mb-2", style = "padding:10px 6px; line-height:1.25;")),
         column(6, actionButton(ns("run_max"), ext_btn_label("max"),
-          class = "btn btn-danger w-100 mb-2", style = "padding:10px 6px; line-height:1.25;"))
+          class = "btn btn-success w-100 mb-2", style = "padding:10px 6px; line-height:1.25;"))
       ),
       fluidRow(
         column(6, actionButton(ns("reset_btn"), tagList(icon("undo"), "Restaurar tickers"), class = "btn btn-warning w-100 mb-2")),
@@ -487,13 +487,13 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
 
       niveles <- list(
         list("QMin 80", g("Quantil80", "Minimos"), "#6c7cff", "dash"),
-        list("QMin 90", g("Quantil90", "Minimos"), "#2ecc71", "dash"),
+        list("QMin 90", g("Quantil90", "Minimos"), "#c084fc", "dash"),
         list("QMin 99", g("Quantil99", "Minimos"), "#ffcc00", "dash"),
         list("Media Min", g("Media", "Minimos"), "#ff6b6b", "dot"),
         list("QMax 80", g("Quantil80", "Maximos"), "#6c7cff", "dash"),
-        list("QMax 90", g("Quantil90", "Maximos"), "#2ecc71", "dash"),
+        list("QMax 90", g("Quantil90", "Maximos"), "#c084fc", "dash"),
         list("QMax 99", g("Quantil99", "Maximos"), "#ffcc00", "dash"),
-        list("Media Max", g("Media", "Maximos"), "#ff6b6b", "dot")
+        list("Media Max", g("Media", "Maximos"), "#2ecc71", "dot")
       )
 
       p <- plot_ly() %>%
@@ -546,7 +546,8 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
       lv <- tb[tb$Concepto %in% c("Quantil80", "Quantil90", "Quantil99", "Media"), ]
       niveles <- if (modo == "max") lv$PreciosMaximos else lv$PreciosMinimos
       pref <- if (modo == "max") "QMax " else "QMin "
-      cols <- c(Quantil80 = "#6c7cff", Quantil90 = "#2ecc71", Quantil99 = "#ffcc00", Media = "#ff6b6b")
+      cols <- c(Quantil80 = "#6c7cff", Quantil90 = "#c084fc", Quantil99 = "#ffcc00",
+                Media = if (modo == "max") "#2ecc71" else "#ff6b6b")
 
       p <- plot_ly() %>%
         add_lines(data = pxs, x = ~date, y = ~close, name = "Precio", line = list(color = "#e0e0e0", width = 1.5)) %>%
@@ -667,8 +668,9 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
 # =========================================================
 extremos_guide_ui <- function() {
   h4s <- "color: #ffcc66; font-weight: bold; margin-top: 6px;"
-  verde <- "color:#2ecc71;font-weight:bold;"
-  rojo <- "color:#ff6b6b;font-weight:bold;"
+  # Misma lógica de color que los botones: rojo = mínimos, verde = máximos
+  c_min <- "color:#ff6b6b;font-weight:bold;"
+  c_max <- "color:#2ecc71;font-weight:bold;"
   div(
     class = "card p-4 mb-4",
     style = "max-width: 920px; margin: 0 auto; font-size: 1.05em;",
@@ -676,11 +678,11 @@ extremos_guide_ui <- function() {
       "Guía de Uso e Interpretación — Extremos Locales (QMin / QMax)"),
     p("Este módulo compara el movimiento actual de cada empresa contra sus propios movimientos históricos y responde dos preguntas:"),
     tags$ul(
-      tags$li(HTML(sprintf("<span style='%s'>▼ Mínimos locales:</span> ¿la <b>caída</b> actual ya es más grande que la mayoría de sus caídas históricas? → posible <b>zona de rebote</b>.", verde))),
-      tags$li(HTML(sprintf("<span style='%s'>▲ Máximos locales:</span> ¿la <b>subida</b> actual ya es más grande que la mayoría de sus subidas históricas? → posible <b>zona de techo</b> o de toma de utilidades.", rojo)))
+      tags$li(HTML(sprintf("<span style='%s'>▼ Mínimos locales:</span> ¿la <b>caída</b> actual ya es más grande que la mayoría de sus caídas históricas? → posible <b>zona de rebote</b>.", c_min))),
+      tags$li(HTML(sprintf("<span style='%s'>▲ Máximos locales:</span> ¿la <b>subida</b> actual ya es más grande que la mayoría de sus subidas históricas? → posible <b>zona de techo</b> o de toma de utilidades.", c_max)))
     ),
     div(class = "alert alert-secondary",
-      HTML("<b>En una frase:</b> el botón <b>verde</b> busca acciones que <b>cayeron de más</b>; el botón <b>rojo</b> busca acciones que <b>subieron de más</b>, siempre comparadas contra su propia historia.")),
+      HTML("<b>En una frase:</b> el botón <b style='color:#ff6b6b;'>rojo</b> busca acciones que <b>cayeron de más</b> (mínimos locales); el botón <b style='color:#2ecc71;'>verde</b> busca acciones que <b>subieron de más</b> (máximos locales), siempre comparadas contra su propia historia.")),
     hr(),
 
     h4(style = h4s, "1. ¿Qué son los extremos locales?"),
@@ -719,7 +721,7 @@ extremos_guide_ui <- function() {
     tags$ol(
       tags$li(HTML("Escribe o pega tus tickers, o agrégalos con el campo <b>Agregar tickers</b>. Usa <b>Limpiar lista</b> para empezar de cero.")),
       tags$li(HTML("Elige el <b>Nivel de cuantil</b> (90 recomendado). Aplica como QMin en la búsqueda de mínimos y como QMax en la de máximos.")),
-      tags$li(HTML(sprintf("Da clic en <span style='%s'>Buscar empresas en MÍNIMOS locales</span> o en <span style='%s'>Buscar empresas en MÁXIMOS locales</span>.", verde, rojo))),
+      tags$li(HTML(sprintf("Da clic en <span style='%s'>Buscar empresas en MÍNIMOS locales</span> o en <span style='%s'>Buscar empresas en MÁXIMOS locales</span>.", c_min, c_max))),
       tags$li(HTML("Espera a que la barra llegue a 100% y aparezca <b>“Proceso concluido con éxito”</b>. Si algo falla verás el error en rojo.")),
       tags$li(HTML("Revisa la tabla de resultados y da clic en una fila para ver su detalle (gráficas y métricas)."))
     ),
@@ -740,7 +742,7 @@ extremos_guide_ui <- function() {
       tags$li(HTML("<b>Nivel Perforado / Nivel Superado</b>: el cuantil más extremo que ya rompió (por ejemplo QMin95 o QMax99).")),
       tags$li(HTML("<b>Tramo</b>: 'Bajista' = el último extremo confirmado fue un máximo y el precio va a la baja; 'Alcista' = el último confirmado fue un mínimo y el precio va al alza.")),
       tags$li(HTML("<b>Días Últ. Extremo</b>: días desde el último máximo o mínimo confirmado.")),
-      tags$li(HTML("<b>Gráfica de rendimientos</b>: puntos rojos = caídas, verdes = subidas; el <b>rombo azul</b> es el movimiento actual. En mínimos, si queda bajo las líneas QMin, está en zona extrema; en máximos, si queda sobre las líneas QMax, está en zona extrema.")),
+      tags$li(HTML("<b>Gráfica de rendimientos</b>: puntos <span style='color:#ff6b6b;'>rojos</span> = mínimos (caídas), <span style='color:#2ecc71;'>verdes</span> = máximos (subidas); el <b>rombo azul</b> es el movimiento actual. En mínimos, si queda bajo las líneas QMin, está en zona extrema; en máximos, si queda sobre las líneas QMax, está en zona extrema.")),
       tags$li(HTML("<b>Gráfica de precio</b>: muestra los extremos recientes y las líneas de precio QMin (desde el último máximo) o QMax (desde el último mínimo). La línea sólida es el nivel elegido.")),
       tags$li(HTML("<b>Métricas actuales</b>: la celda <span style='background:#3f9e3f;color:#fff;padding:0 4px;'>verde</span> marca el siguiente nivel estadístico. En mínimos es el soporte más cercano por debajo del precio; en máximos, la resistencia más cercana por encima. Las celdas <span style='background:#7f1d1d;color:#fff;padding:0 4px;'>rojo oscuro</span> son niveles que el precio ya rompió."))
     ),
@@ -748,8 +750,8 @@ extremos_guide_ui <- function() {
 
     h4(style = h4s, "7. Cómo interpretar cada búsqueda"),
     fluidRow(
-      column(6, div(class = "p-3", style = "border:1px solid #2ecc71; border-radius:12px; height:100%;",
-        h5(style = verde, "▼ Empresas en MÍNIMOS locales"),
+      column(6, div(class = "p-3", style = "border:1px solid #ff6b6b; border-radius:12px; height:100%;",
+        h5(style = c_min, "▼ Empresas en MÍNIMOS locales"),
         tags$ul(
           tags$li("Indica sobreventa estadística: cayó más que casi siempre."),
           tags$li("Úsalo para encontrar candidatas a compra o rebote."),
@@ -758,8 +760,8 @@ extremos_guide_ui <- function() {
           tags$li("Stop: debajo del siguiente nivel QMin (QMin95/QMin99). Objetivo: Media Max o QMax desde el mínimo.")
         )
       )),
-      column(6, div(class = "p-3", style = "border:1px solid #ff6b6b; border-radius:12px; height:100%;",
-        h5(style = rojo, "▲ Empresas en MÁXIMOS locales"),
+      column(6, div(class = "p-3", style = "border:1px solid #2ecc71; border-radius:12px; height:100%;",
+        h5(style = c_max, "▲ Empresas en MÁXIMOS locales"),
         tags$ul(
           tags$li("Indica sobrecompra estadística: subió más que casi siempre."),
           tags$li("Úsalo para tomar utilidades, subir el stop o evitar compras tardías."),

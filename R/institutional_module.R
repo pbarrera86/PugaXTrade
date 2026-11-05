@@ -133,7 +133,7 @@ institutional_ui <- function(id) {
         extremos_ui(ns("ext"))
       ),
       tabPanel(
-        "Guía Extremos Locales (QMin)",
+        "Guía Extremos Locales",
         br(),
         extremos_guide_ui()
       ),
