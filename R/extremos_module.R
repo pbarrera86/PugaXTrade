@@ -559,3 +559,88 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
     )
   })
 }
+
+# =========================================================
+# Guía de uso e interpretación — Extremos Locales (QMin)
+# =========================================================
+extremos_guide_ui <- function() {
+  h4s <- "color: #0f172a; font-weight: bold;"
+  div(
+    class = "card p-4 mb-4",
+    style = "max-width: 900px; margin: 0 auto; font-size: 1.05em;",
+    h3(style = "color: #0f62fe; font-weight: bold; margin-bottom: 20px;",
+      "Guía de Uso e Interpretación — Extremos Locales (QMin)"),
+    p("Este módulo responde una pregunta concreta: ",
+      strong("¿la caída actual de una empresa ya es más grande que la mayoría de las caídas que ha tenido en su historia?"),
+      " Si la respuesta es sí, la acción está en una zona estadísticamente extrema, donde históricamente suelen aparecer rebotes o cambios de tendencia al alza."),
+    hr(),
+
+    h4(style = h4s, "1. ¿Qué son los extremos locales?"),
+    p("Son los picos (máximos) y valles (mínimos) importantes del precio. Se detectan con un ",
+      strong("zigzag"), ": un máximo se confirma cuando el precio cae al menos X% desde él, y un mínimo se confirma cuando el precio sube al menos X% desde él."),
+    tags$ul(
+      tags$li(HTML("<b>Cada tramo máximo → mínimo es una caída</b> (rendimiento negativo).")),
+      tags$li(HTML("<b>Cada tramo mínimo → máximo es una subida</b> (rendimiento positivo).")),
+      tags$li(HTML("Con toda la historia de la acción (desde 1990 si existe) se forma la <b>serie de rendimientos entre extremos</b>, que es la línea gris de la primera gráfica."))
+    ),
+    br(),
+
+    h4(style = h4s, "2. ¿Qué es el QMin y el QMax?"),
+    tags$ul(
+      tags$li(HTML("<b>QMin P</b> (cuantil de mínimos): la caída que solo el (100−P)% de las caídas históricas ha superado. Ejemplo: <b>QMin90 = −45%</b> significa que el 90% de las caídas de esa empresa fueron menores a 45% y solo el 10% fue más profunda.")),
+      tags$li(HTML("<b>QMax P</b> (cuantil de máximos): lo mismo para las subidas. <b>QMax80 = +100%</b> significa que el 80% de los rebotes fueron menores a +100%.")),
+      tags$li(HTML("<b>Media Min / Media Max</b>: la caída y la subida promedio entre extremos."))
+    ),
+    br(),
+
+    h4(style = h4s, "3. Cómo se convierten en precios"),
+    tags$ul(
+      tags$li(HTML("<b>Precio Mínimo P</b> = Precio Último Máximo × (1 + QMin P). Es el precio al que la caída actual igualaría al cuantil P.")),
+      tags$li(HTML("<b>Precio Máximo P</b> = Precio Último Mínimo × (1 + QMax P). Es un objetivo estadístico de subida desde el último valle.")),
+      tags$li(HTML("<b>Posición Actual</b> = Precio Actual − Precio Mínimo P. <span style='color:#c0392b;font-weight:bold;'>Negativa</span>: el precio ya perforó ese nivel. <span style='color:#2e7d32;font-weight:bold;'>Positiva</span>: aún está por encima."))
+    ),
+    div(class = "alert alert-secondary",
+      HTML("<b>Ejemplo (INTC):</b> Último máximo $127.39 y QMin90 = −45.0% → Precio QMin90 = 127.39 × (1 − 0.45) = <b>$70.13</b>.
+      Con precio actual de $58.27, la Posición Actual es −11.86 → <b>ya perforó el QMin90</b> (y también el QMin95 de $61.36).
+      Su caída actual (−54.3%) es mayor que el 95% de sus caídas históricas.")),
+    br(),
+
+    h4(style = h4s, "4. Parámetros del screener"),
+    tags$ul(
+      tags$li(HTML("<b>Nivel QMin a perforar</b>: la condición del filtro. QMin80 da más resultados (caídas grandes); QMin95 o QMin99 solo muestra caídas excepcionales. <b>Recomendado: QMin90.</b>")),
+      tags$li(HTML("<b>Sensibilidad (zigzag)</b>: 15% detecta más oscilaciones (ciclos cortos); 25–30% solo ciclos grandes. <b>Recomendado: 20%.</b> Si cambias la sensibilidad, cambian los cuantiles.")),
+      tags$li(HTML("<b>Mínimo de caídas históricas</b>: exige suficiente historia para que el cuantil sea confiable. Con menos de 5 caídas la estadística es débil.")),
+      tags$li(HTML("<b>Datos de precios</b>: 'Usar caché' reutiliza descargas de las últimas 12 h (más rápido). 'Descargar frescos' fuerza datos nuevos."))
+    ),
+    br(),
+
+    h4(style = h4s, "5. Cómo leer los resultados"),
+    tags$ul(
+      tags$li(HTML("<b>Tabla de empresas</b>: ordenada por <b>Distancia al Nivel</b> (más negativa = más hundida bajo el QMin). <b>Nivel Perforado</b> indica el cuantil más profundo que ya rompió (QMin95, QMin99…).")),
+      tags$li(HTML("<b>Tramo</b>: 'Bajista' = la caída sigue en curso; 'Alcista' = ya rebotó al menos el % del zigzag desde el último mínimo.")),
+      tags$li(HTML("<b>Días Últ. Extremo</b>: días desde el último máximo/mínimo confirmado. Caídas muy recientes y profundas suelen ser más violentas; caídas largas suelen indicar capitulación.")),
+      tags$li(HTML("<b>Gráfica de rendimientos</b>: puntos rojos = caídas, verdes = subidas; el rombo azul es la caída actual. Si el rombo queda por debajo de las líneas QMin, está en zona extrema.")),
+      tags$li(HTML("<b>Gráfica de precio</b>: muestra los extremos recientes y las líneas de precio QMin80/90/99 proyectadas desde el último máximo (la línea sólida es el nivel elegido).")),
+      tags$li(HTML("<b>Métricas actuales</b>: la celda <span style='background:#3f9e3f;color:#fff;padding:0 4px;'>verde</span> marca el soporte estadístico más cercano por debajo del precio (el siguiente nivel que podría tocar)."))
+    ),
+    br(),
+
+    h4(style = h4s, "6. Flujo recomendado"),
+    tags$ol(
+      tags$li("Ejecuta el screener con QMin90 y zigzag 20% sobre tu lista."),
+      tags$li("Prioriza empresas con más de 10 caídas históricas y que perforen QMin90 o más."),
+      tags$li("Confirma la calidad en el Dashboard Analítico: evita las de semáforo rojo por deterioro fundamental (una caída extrema puede ser justificada)."),
+      tags$li("Espera una señal de giro: que el Tramo cambie a 'Alcista', un cierre arriba del máximo del día anterior o un repunte con volumen."),
+      tags$li("Define tu stop debajo del siguiente nivel QMin (por ejemplo QMin95 o QMin99) y tu objetivo con la Media Max o QMax del último mínimo.")
+    ),
+    br(),
+
+    div(
+      class = "alert alert-primary mt-3",
+      style = "font-size: 1.05em;",
+      HTML("<b>💡 Regla de oro:</b> estar bajo el QMin90 indica que la caída es <b>estadísticamente extrema</b>, no que ya tocó fondo.
+      Úsalo como <b>filtro de oportunidades</b> y combínalo con fundamentales y una confirmación técnica antes de comprar.
+      Los cuantiles se basan en el pasado: un cambio estructural en la empresa (fraude, quiebra, pérdida de negocio) puede generar caídas mayores que cualquiera de su historia.")
+    )
+  )
+}
