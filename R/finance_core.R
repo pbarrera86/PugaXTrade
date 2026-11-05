@@ -527,8 +527,8 @@ eval_indicator <- function(ind_en, val) {
 
 # ------------------- Yahoo (precios) -------------------
 .yf_xt <- function(ticker, from = Sys.Date() - 365, to = Sys.Date()) {
-  # Yahoo usa guión para clases (p.ej. BRK-B), mientras Finviz usa punto (BRK.B)
-  y_ticker <- gsub("\\.", "-", ticker)
+  # Yahoo usa guión para clases (p.ej. BRK-B); los tickers .MX se conservan (AMXB.MX)
+  y_ticker <- utils_yahoo_symbol(ticker)
   suppressWarnings({
     xt <- try(
       quantmod::getSymbols(

@@ -10,8 +10,23 @@ utils_parse_tickers <- function(txt) {
   xs <- unlist(strsplit(txt, "[,;\\s]+"))
   xs <- toupper(trimws(xs))
   xs <- gsub("^[^A-Z0-9.-]+|[^A-Z0-9.-]+$", "", xs)
-  xs <- xs[nzchar(xs) & nchar(xs) >= 1 & nchar(xs) <= 6]
+  # Hasta 20 caracteres para admitir emisoras de la BMV/BIVA (p. ej. TLEVISACPO.MX, MFRISCOA-1.MX)
+  xs <- xs[nzchar(xs) & nchar(xs) >= 1 & nchar(xs) <= 20]
   unique(xs)
+}
+
+# ¿Ticker mexicano (Bolsa Mexicana / SIC)? Termina en ".MX"
+utils_is_mx_ticker <- function(ticker) {
+  if (is.null(ticker)) return(FALSE)
+  grepl("\\.MX$", toupper(trimws(ticker)))
+}
+
+# Símbolo para Yahoo Finanzas:
+#  - ".MX" se conserva tal cual (AMXB.MX, NAFTRACISHRS.MX, MFRISCOA-1.MX)
+#  - clases de acciones de EE. UU. usan guion (BRK.B -> BRK-B)
+utils_yahoo_symbol <- function(ticker) {
+  t <- toupper(trimws(ticker))
+  ifelse(grepl("\\.MX$", t), t, gsub(".", "-", t, fixed = TRUE))
 }
 
 utils_http_get <- function(url, tries = 3, sleep_sec = 1) {
