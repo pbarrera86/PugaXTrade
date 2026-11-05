@@ -15,9 +15,11 @@
 #      Precio Mínimo P = Precio Último Máximo × (1 + QMinP)
 #      Precio Máximo P = Precio Último Mínimo × (1 + QMaxP)
 #      Posición Actual = Precio Actual − Precio Mínimo P
-# 5) Screener: empresas cuyo Precio Actual < Precio Mínimo del QMin elegido
-#    (por defecto QMin90) → la caída actual ya es mayor que el 90% de
-#    sus caídas históricas.
+# 5) Screener (dos modos):
+#    - Mínimos: Precio Actual < Precio Mínimo del QMin elegido (p. ej. QMin90)
+#      → la caída actual ya es mayor que el 90% de sus caídas históricas.
+#    - Máximos: Precio Actual > Precio Máximo del QMax elegido (p. ej. QMax90)
+#      → la subida actual ya es mayor que el 90% de sus subidas históricas.
 #
 # Este archivo es autocontenido para poder cargarse dentro de un worker
 # de `future` (solo requiere quantmod para descargar precios).
@@ -189,40 +191,67 @@ ext_compute <- function(prices, umbral = 0.20, quantiles = EXT_QUANTILES) {
 }
 
 # Fila resumen del screener para un ticker
-ext_screen_row <- function(ticker, res, q_sel = 90) {
+ext_screen_row <- function(ticker, res, q_sel = 90, modo = c("min", "max")) {
+  modo <- match.arg(modo)
   if (is.null(res)) return(NULL)
   tb <- res$table
   qrow <- tb[tb$Concepto == paste0("Quantil", q_sel), , drop = FALSE]
   if (nrow(qrow) == 0) return(NULL)
-
-  # Cuantil más profundo que el precio actual ya perforó
   q_rows <- tb[grepl("^Quantil", tb$Concepto), , drop = FALSE]
-  broken <- q_rows$Concepto[res$price_now < q_rows$PreciosMinimos]
-  nivel <- if (length(broken)) sub("Quantil", "QMin", tail(broken, 1)) else "—"
 
-  data.frame(
-    Ticker = ticker,
-    PrecioActual = res$price_now,
-    UltimoMaximo = res$last_max$price,
-    FechaUltMax = res$last_max$date,
-    CaidaActual = res$caida_actual,
-    QMinSel = qrow$Minimos,
-    PrecioQMinSel = qrow$PreciosMinimos,
-    DistanciaPct = res$price_now / qrow$PreciosMinimos - 1,
-    NivelPerforado = nivel,
-    QMedia = tb$Minimos[tb$Concepto == "Media"],
-    NumCaidas = length(res$drops),
-    DiasUltExtremo = res$dias_ult_extremo,
-    Tramo = res$tramo,
-    stringsAsFactors = FALSE
-  )
+  if (modo == "min") {
+    # Cuantil más profundo que el precio actual ya perforó (por debajo)
+    broken <- q_rows$Concepto[res$price_now < q_rows$PreciosMinimos]
+    nivel <- if (length(broken)) sub("Quantil", "QMin", tail(broken, 1)) else "—"
+    data.frame(
+      Ticker = ticker,
+      PrecioActual = res$price_now,
+      ExtremoRef = res$last_max$price,
+      FechaExtremoRef = res$last_max$date,
+      MovActual = res$caida_actual,
+      QSel = qrow$Minimos,
+      PrecioQSel = qrow$PreciosMinimos,
+      DistanciaPct = res$price_now / qrow$PreciosMinimos - 1,
+      NivelSuperado = nivel,
+      QMedia = tb$Minimos[tb$Concepto == "Media"],
+      NumTramos = length(res$drops),
+      DiasUltExtremo = res$dias_ult_extremo,
+      Tramo = res$tramo,
+      stringsAsFactors = FALSE
+    )
+  } else {
+    # Cuantil más alto que el precio actual ya superó (por encima)
+    broken <- q_rows$Concepto[res$price_now > q_rows$PreciosMaximos]
+    nivel <- if (length(broken)) sub("Quantil", "QMax", tail(broken, 1)) else "—"
+    data.frame(
+      Ticker = ticker,
+      PrecioActual = res$price_now,
+      ExtremoRef = res$last_min$price,
+      FechaExtremoRef = res$last_min$date,
+      MovActual = res$rebote_actual,
+      QSel = qrow$Maximos,
+      PrecioQSel = qrow$PreciosMaximos,
+      DistanciaPct = res$price_now / qrow$PreciosMaximos - 1,
+      NivelSuperado = nivel,
+      QMedia = tb$Maximos[tb$Concepto == "Media"],
+      NumTramos = length(res$rises),
+      DiasUltExtremo = res$dias_ult_extremo,
+      Tramo = res$tramo,
+      stringsAsFactors = FALSE
+    )
+  }
 }
 
 # ---------------------------------------------------------
 # Pipeline del screener (lista de tickers)
+#   modo = "min": empresas con precio POR DEBAJO del Precio QMin elegido
+#                 (caída desde el último máximo mayor que la mayoría de sus caídas)
+#   modo = "max": empresas con precio POR ENCIMA del Precio QMax elegido
+#                 (subida desde el último mínimo mayor que la mayoría de sus subidas)
 # ---------------------------------------------------------
 ext_run_screener <- function(tickers, umbral = 0.20, q_sel = 90, min_caidas = 5,
-                             max_age_hours = 12, progress_cb = NULL) {
+                             max_age_hours = 12, progress_cb = NULL, modo = c("min", "max")) {
+  modo <- match.arg(modo)
   tickers <- unique(toupper(trimws(tickers)))
   tickers <- tickers[nzchar(tickers)]
   rows <- vector("list", length(tickers))
@@ -239,25 +268,30 @@ ext_run_screener <- function(tickers, umbral = 0.20, q_sel = 90, min_caidas = 5,
       next
     }
     details[[tk]] <- res
-    rows[[k]] <- ext_screen_row(tk, res, q_sel)
+    rows[[k]] <- ext_screen_row(tk, res, q_sel, modo)
   }
 
   todos <- do.call(rbind, rows[!vapply(rows, is.null, logical(1))])
   if (is.null(todos)) todos <- data.frame()
 
+  # Orden: lo más extremo primero (más abajo del QMin / más arriba del QMax)
+  ordenar <- function(df) {
+    if (!nrow(df)) return(df)
+    df[order(if (modo == "min") df$DistanciaPct else -df$DistanciaPct), , drop = FALSE]
+  }
   candidatos <- if (nrow(todos)) {
-    c0 <- todos[todos$PrecioActual < todos$PrecioQMinSel & todos$NumCaidas >= min_caidas, , drop = FALSE]
-    c0[order(c0$DistanciaPct), , drop = FALSE]
+    cumple <- if (modo == "min") todos$PrecioActual < todos$PrecioQSel else todos$PrecioActual > todos$PrecioQSel
+    ordenar(todos[cumple & todos$NumTramos >= min_caidas, , drop = FALSE])
   } else {
     todos
   }
 
   list(
     candidatos = candidatos,
-    todos = if (nrow(todos)) todos[order(todos$DistanciaPct), , drop = FALSE] else todos,
+    todos = ordenar(todos),
     details = details,
     fallidos = fallidos,
-    params = list(umbral = umbral, q_sel = q_sel, min_caidas = min_caidas),
+    params = list(umbral = umbral, q_sel = q_sel, min_caidas = min_caidas, modo = modo),
     run_at = Sys.time()
   )
 }
