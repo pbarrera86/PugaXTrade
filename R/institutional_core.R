@@ -1989,42 +1989,38 @@ inst_run_pipeline <- function(tickers, investor_profile = "Balanceado", use_post
 
   if (is.function(progress_cb)) progress_cb(msg = "Preparando análisis...", pct = 1)
 
-  # IMPORTANTE: Esta funci\u00f3n corre dentro de un worker de ExtendedTask (future_promise).
-  # NO crear un nuevo plan multisession aqu\u00ed \u2014 anidar paralelismo causa el error
-  # "checkNumberOfLocalWorkers". Usamos sequential (sin overhead) dentro del worker.
-  if (!inherits(future::plan(), "sequential")) {
-    future::plan(sequential)
-  }
-
+  # Esta función corre dentro de un proceso en segundo plano (mirai/future).
+  # Los tickers se procesan uno a uno para poder reportar el avance real
+  # (de 10% a 90%) al módulo, que lo muestra en la barra de progreso.
   if (is.function(progress_cb)) progress_cb(msg = "Descargando datos de mercado base (SPY)...", pct = 5)
   spy_data <- .get_spy_history()
 
-  if (is.function(progress_cb)) progress_cb(msg = paste("Analizando", n, "tickers en paralelo..."), pct = 10)
-
-  # Usamos furrr para procesamiento paralelo real si hay más de 3 tickers
-  # Evitamos overhead en listas pequeñas
-  use_parallel <- n > 3
-  if (use_parallel) {
-    res_list <- furrr::future_map(tickers, function(tk) {
+  res_list <- vector("list", n)
+  for (k in seq_len(n)) {
+    tk <- tickers[k]
+    if (is.function(progress_cb)) {
+      progress_cb(msg = sprintf("Analizando %s (%d de %d)", tk, k, n), pct = 10 + floor(80 * (k - 1) / n))
+    }
+    # Un ticker con error no detiene el análisis completo
+    res_list[k] <- list(tryCatch(
       analyze_one_ticker(
         ticker = tk,
         investor_profile = investor_profile,
         use_postgres_cache = use_postgres_cache,
         progress_cb = NULL,
         spy_data = spy_data
-      )
-    }, .options = furrr::furrr_options(seed = TRUE))
-  } else {
-    res_list <- purrr::map(tickers, function(tk) {
-      analyze_one_ticker(
-        ticker = tk,
-        investor_profile = investor_profile,
-        use_postgres_cache = use_postgres_cache,
-        progress_cb = NULL,
-        spy_data = spy_data
-      )
-    })
+      ),
+      error = function(e) {
+        message("[INST] Error en ", tk, ": ", conditionMessage(e))
+        NULL
+      }
+    ))
   }
+  ok <- !vapply(res_list, function(r) is.null(r) || is.null(r$summary), logical(1))
+  if (!any(ok)) stop("No se pudo analizar ningún ticker. Verifica los símbolos o la conexión con las fuentes de datos.")
+  res_list <- res_list[ok]
+  tickers <- tickers[ok]
+  if (is.function(progress_cb)) progress_cb(msg = "Consolidando resultados por ticker...", pct = 90)
 
   names(res_list) <- tickers
 

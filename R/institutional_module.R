@@ -133,6 +133,11 @@ institutional_ui <- function(id) {
         extremos_ui(ns("ext"))
       ),
       tabPanel(
+        "Guía Extremos Locales (QMin)",
+        br(),
+        extremos_guide_ui()
+      ),
+      tabPanel(
         "Guía de Uso (Playbook)",
         br(),
         inst_playbook_tab_ui()
@@ -153,7 +158,10 @@ institutional_server <- function(id, user_reactive) {
       wb_path       = NULL,
       cancelled     = FALSE,
       task_running  = FALSE, # TRUE mientras el ExtendedTask está activo
-      anim_step     = 0 # contador para animar la barra
+      status        = "idle", # idle | running | ok | error | cancelled
+      prog_file     = NULL, # archivo donde el proceso escribe "pct|mensaje"
+      started       = NULL,
+      tickers_req   = character(0)
     )
 
     # ---- Lógica de Bloqueo / Banner Local ----
@@ -197,55 +205,64 @@ institutional_server <- function(id, user_reactive) {
       }
     })
 
-    # Reactivo independiente para controlar la animación de progreso
-    animating <- reactiveVal(FALSE)
-
-    # Animación de progreso mientras el worker corre
-    # Arranca cuando animating() es TRUE, independiente del estado del ExtendedTask
-    observe({
-      req(animating())
-      invalidateLater(800)
-
-      # Mensajes rotativos para dar sensación de avance
-      msgs <- c(
-        "Descargando datos de Finviz y Yahoo Finance...",
-        "Calculando indicadores fundamentales...",
-        "Evaluando métricas técnicas (SMA, RSI)...",
-        "Calculando Beta, Divergencias y Cruces...",
-        "Aplicando pesos por perfil de inversor...",
-        "Generando semáforos y rankings...",
-        "Construyendo matrices de correlación...",
-        "Ejecutando backtesting (1 año)...",
-        "Finalizando análisis institucional..."
-      )
-
-      # Usar isolate para no activar una revaluación instantánea (infinite loop)
-      step <- isolate(rv$anim_step)
-      curr_prog <- isolate(rv$progress)
-
-      rv$anim_step <- (step + 1) %% length(msgs)
-
-      # Progreso simulado: sube de 5% a 90% de forma gradual
-      if (curr_prog < 90) {
-        increment <- if (curr_prog < 30) 4 else if (curr_prog < 60) 2 else 1
-        rv$progress <- min(90, curr_prog + increment)
+    # ---- Progreso real (escrito por el proceso de análisis en un archivo) ----
+    # Formato del archivo: "pct|mensaje"
+    inst_ctrl_ids <- c("run_btn", "reset_btn", "glossary_btn", "download_excel", "clear_cache_btn",
+                       "tickers", "perfil", "modo_cache")
+    inst_set_busy <- function(busy) {
+      for (i in inst_ctrl_ids) {
+        if (busy) shinyjs::disable(i) else shinyjs::enable(i)
       }
-      rv$progress_msg <- msgs[[rv$anim_step + 1]]
-    })
+      if (busy) {
+        shinyjs::html("run_btn", as.character(tagList(icon("spinner", class = "fa-spin"), " Procesando...")))
+        shinyjs::show("cancel_btn")
+      } else {
+        shinyjs::html("run_btn", as.character(tagList(icon("play"), " Iniciar análisis")))
+        shinyjs::hide("cancel_btn")
+      }
+    }
 
     output$progress_ui <- renderUI({
-      tagList(
-        div(style = "font-weight:600; margin-bottom:8px;", paste0(rv$progress_msg, " (", rv$progress, "%)")),
-        div(
-          class = "progress",
-          div(
-            class = "progress-bar",
-            role = "progressbar",
-            style = paste0("width:", rv$progress, "%;"),
-            paste0(rv$progress, "%")
-          )
-        )
-      )
+      st <- rv$status
+      bar <- function(pct, cls, label) {
+        div(class = "progress", style = "height:26px; margin:6px 0 10px 0;",
+          div(class = paste("progress-bar", cls), role = "progressbar",
+            style = sprintf("width:%d%%; font-weight:700; font-size:.95em;", as.integer(pct)),
+            `aria-valuenow` = pct, `aria-valuemin` = 0, `aria-valuemax` = 100, label))
+      }
+      if (identical(st, "running")) {
+        invalidateLater(700)
+        ln <- tryCatch(readLines(rv$prog_file, warn = FALSE)[1], error = function(e) NA_character_)
+        pct <- 0L; msg <- "Preparando análisis..."
+        if (!is.na(ln) && nzchar(ln)) {
+          parts <- strsplit(ln, "|", fixed = TRUE)[[1]]
+          p <- suppressWarnings(as.integer(parts[1]))
+          if (!is.na(p)) pct <- max(0L, min(99L, p))
+          if (length(parts) >= 2) msg <- paste(parts[-1], collapse = "|")
+        }
+        seg <- round(as.numeric(difftime(Sys.time(), rv$started, units = "secs")))
+        return(tagList(
+          div(style = "font-weight:600; margin-top:8px;", icon("spinner", class = "fa-spin"),
+            sprintf(" %s · %d s", msg, seg)),
+          bar(max(pct, 2L), "progress-bar-striped progress-bar-animated bg-info", sprintf("%d%%", pct))
+        ))
+      }
+      if (identical(st, "ok")) {
+        return(tagList(
+          bar(100L, "bg-success", "100%"),
+          div(class = "alert alert-success", icon("check-circle"), " ", rv$progress_msg)
+        ))
+      }
+      if (identical(st, "error")) {
+        return(tagList(
+          bar(100L, "bg-danger", "Error"),
+          div(class = "alert alert-danger", icon("exclamation-triangle"), " ", rv$progress_msg)
+        ))
+      }
+      if (identical(st, "cancelled")) {
+        return(div(class = "alert alert-warning", style = "margin-top:8px;", icon("stop-circle"), " ", rv$progress_msg))
+      }
+      div(style = "font-weight:600; margin:8px 0;", "Esperando análisis...")
     })
 
     observeEvent(input$reset_btn, {
@@ -285,196 +302,175 @@ institutional_server <- function(id, user_reactive) {
       showNotification("Caché local y en DB limpiadas. El próximo análisis descargará datos frescos.", type = "message")
     })
 
-    # Tarea en background para Análisis Institucional
-    # Usamos try para evitar crashes si la versión de Shiny es muy antigua
+    # ---- Tarea en segundo plano para el Análisis Institucional ----
+    # Corre en un proceso R independiente (mirai) para que la sesión siga
+    # respondiendo y la barra de avance se actualice en vivo. Si mirai no está
+    # disponible se usa future como respaldo.
+    inst_worker_job <- function(app_dir, ticks, perf, use_pg, prog_file) {
+      setwd(app_dir)
+      suppressWarnings(suppressMessages({
+        library(future)
+        library(dplyr)
+        library(httr)
+        library(rvest)
+        library(xml2)
+        library(quantmod)
+        library(TTR)
+        library(plotly)
+        library(openxlsx)
+      }))
+      future::plan(future::sequential)
+      write_prog <- function(pct, msg) try(writeLines(sprintf("%d|%s", as.integer(pct), msg), prog_file), silent = TRUE)
+      write_prog(1, "Cargando módulos de análisis...")
+      source("R/db.R", local = TRUE)
+      source("R/finance_core.R", local = TRUE)
+      source("R/institutional_core.R", local = TRUE)
+      on.exit(
+        {
+          if (exists("pool_close", mode = "function")) try(pool_close(), silent = TRUE)
+          if (exists("pg_pool_global") && !is.null(get("pg_pool_global"))) {
+            try(pool::poolClose(get("pg_pool_global")), silent = TRUE)
+          }
+        },
+        add = TRUE
+      )
+      inst_run_pipeline(
+        tickers = ticks,
+        investor_profile = perf,
+        use_postgres_cache = use_pg,
+        progress_cb = function(msg = "", pct = 0) write_prog(pct, msg)
+      )
+    }
+    inst_use_mirai <- requireNamespace("mirai", quietly = TRUE)
+    inst_current_job <- NULL # referencia al proceso mirai en curso (para cancelar)
+
     institutional_task <- tryCatch(
-      {
-        shiny::ExtendedTask$new(function(ticks, perf, use_pg) {
-          promises::future_promise(
-            {
-              # Estabilidad: Forzamos plan secuencial interno y cargamos entorno núcleo
-              library(future)
-              plan(sequential)
-
-              # Sourcing del núcleo para visibilidad de helpers en el worker
-              source("R/db.R", local = TRUE)
-              source("R/finance_core.R", local = TRUE)
-              source("R/institutional_core.R", local = TRUE)
-
-              # SEGURIDAD DE CONEXIONES: Prevenir leaks cerrando los pools al terminar el future
-              on.exit(
-                {
-                  if (exists("pool_close", mode = "function")) try(pool_close(), silent = TRUE)
-                  if (exists("pg_pool_global") && !is.null(get("pg_pool_global"))) {
-                    try(pool::poolClose(get("pg_pool_global")), silent = TRUE)
-                  }
-                },
-                add = TRUE
-              )
-
-              suppressWarnings({
-                library(dplyr)
-                library(httr)
-                library(rvest)
-                library(xml2)
-                library(quantmod)
-                library(TTR)
-                library(plotly)
-                library(openxlsx)
-              })
-              inst_run_pipeline(
-                tickers = ticks,
-                investor_profile = perf,
-                use_postgres_cache = use_pg,
-                progress_cb = NULL
-              )
-            },
-            seed = TRUE
+      shiny::ExtendedTask$new(function(ticks, perf, use_pg, prog_file) {
+        app_dir <- normalizePath(getwd())
+        if (inst_use_mirai) {
+          m <- mirai::mirai(
+            job(app_dir, ticks, perf, use_pg, prog_file),
+            job = inst_worker_job, app_dir = app_dir, ticks = ticks, perf = perf,
+            use_pg = use_pg, prog_file = prog_file
           )
-        })
-      },
+          inst_current_job <<- m
+          promises::as.promise(m)
+        } else {
+          promises::future_promise(inst_worker_job(app_dir, ticks, perf, use_pg, prog_file), seed = TRUE)
+        }
+      }),
       error = function(e) {
         message("Warning: Institutional ExtendedTask failed or missing: ", e$message)
         NULL
       }
     )
 
+    inst_finish_ok <- function(res) {
+      rv$task_running <- FALSE
+      if (is.null(res) || is.null(res$summary) || nrow(res$summary) == 0) {
+        rv$status <- "error"
+        rv$progress_msg <- "El análisis terminó sin resultados. Verifica que los tickers existan e intenta de nuevo."
+        showNotification(rv$progress_msg, type = "error", duration = 10)
+        inst_set_busy(FALSE)
+        return()
+      }
+      rv$result <- res
+      updateSelectInput(session, "ticker_detalle",
+        choices  = res$summary$Ticker,
+        selected = res$summary$Ticker[[1]]
+      )
+      wb_tmp <- tempfile(fileext = ".xlsx")
+      ok_xlsx <- tryCatch({ inst_export_analysis_to_excel(res, wb_tmp); TRUE }, error = function(e) FALSE)
+      rv$wb_path <- if (ok_xlsx) wb_tmp else NULL
+      seg <- round(as.numeric(difftime(Sys.time(), rv$started, units = "secs")))
+      faltan <- setdiff(rv$tickers_req, res$summary$Ticker)
+      rv$status <- "ok"
+      rv$progress <- 100
+      rv$progress_msg <- sprintf(
+        "Proceso concluido con éxito. %d tickers analizados%s · Tiempo: %d s.",
+        nrow(res$summary),
+        if (length(faltan)) sprintf(" (sin datos: %s)", paste(head(faltan, 15), collapse = ", ")) else "",
+        seg
+      )
+      showNotification("Proceso concluido con éxito.", type = "message", duration = 6)
+      inst_set_busy(FALSE)
+    }
+
+    inst_finish_error <- function(err) {
+      rv$task_running <- FALSE
+      rv$status <- "error"
+      rv$progress_msg <- paste("Ocurrió un error durante el análisis:", err)
+      showNotification(rv$progress_msg, type = "error", duration = 10)
+      inst_set_busy(FALSE)
+    }
 
     observeEvent(input$run_btn, {
+      if (isTRUE(rv$task_running)) return()
       req(can_analyze())
       tickers <- inst_parse_tickers(input$tickers)
-
       if (length(tickers) == 0) {
         showNotification("Ingresa al menos un ticker válido.", type = "warning")
         return()
       }
 
-      rv$progress <- 5
-      rv$anim_step <- 0
-      rv$progress_msg <- sprintf("Iniciando análisis de %d tickers...", length(tickers))
+      rv$prog_file <- tempfile("inst_prog_", fileext = ".txt")
+      writeLines(sprintf("0|Iniciando análisis de %d tickers...", length(tickers)), rv$prog_file)
+      rv$tickers_req <- tickers
+      rv$started <- Sys.time()
       rv$cancelled <- FALSE
       rv$task_running <- TRUE
-      animating(TRUE) # <-- Arranca la animación inmediatamente
-      shinyjs::disable("run_btn")
-      shinyjs::show("cancel_btn")
+      rv$status <- "running"
+      rv$progress <- 0
+      inst_set_busy(TRUE)
 
       use_pg <- identical(input$modo_cache, "Postgres") && inst_can_use_postgres_cache()
 
       if (!is.null(institutional_task)) {
-        result_ok <- tryCatch(
-          {
-            institutional_task$invoke(tickers, input$perfil, use_pg)
-            TRUE
-          },
-          error = function(e) {
-            message("[Inst] invoke() fallido: ", e$message)
-            FALSE
-          }
-        )
-
-        if (!result_ok) {
-          # Fallback sincrónico si el worker no pudo iniciarse
-          showNotification(
-            "Análisis institucional en modo secuencial (workers no disponibles).",
-            type = "warning", duration = 5
-          )
-          tryCatch(
-            {
-              res <- inst_run_pipeline(tickers, input$perfil, use_pg, progress_cb = NULL)
-              if (!rv$cancelled) rv$result <- res
-              rv$progress <- 100
-              rv$progress_msg <- "Completado"
-              shinyjs::enable("run_btn")
-              shinyjs::hide("cancel_btn")
-            },
-            error = function(e) {
-              showNotification(paste("Error institucional:", e$message), type = "error", duration = 8)
-              shinyjs::enable("run_btn")
-              shinyjs::hide("cancel_btn")
-            }
-          )
-        }
-      } else {
-        showNotification("Modo compatibilidad: Análisis Institucional bloqueante.", type = "warning")
-        res <- inst_run_pipeline(tickers, input$perfil, use_pg, progress_cb = NULL)
-        if (!rv$cancelled) rv$result <- res
-        rv$progress <- 100
-        rv$progress_msg <- "Completado (Sincrónico)"
-        shinyjs::enable("run_btn")
-        shinyjs::hide("cancel_btn")
+        ok <- tryCatch({
+          institutional_task$invoke(tickers, input$perfil, use_pg, rv$prog_file)
+          TRUE
+        }, error = function(e) {
+          message("[Inst] invoke() fallido: ", e$message)
+          FALSE
+        })
+        if (ok) return()
       }
+
+      # Respaldo sincrónico (sin proceso en segundo plano)
+      showNotification("Análisis en modo secuencial (procesos en segundo plano no disponibles).", type = "warning", duration = 5)
+      tryCatch({
+        res <- withProgress(message = "Analizando...", value = 0, {
+          inst_run_pipeline(tickers, input$perfil, use_pg,
+            progress_cb = function(msg = "", pct = 0) setProgress(value = pct / 100, detail = msg))
+        })
+        inst_finish_ok(res)
+      }, error = function(e) inst_finish_error(conditionMessage(e)))
     })
 
     observeEvent(input$cancel_btn, {
+      if (!isTRUE(rv$task_running)) return()
       rv$cancelled <- TRUE
       rv$task_running <- FALSE
+      rv$status <- "cancelled"
       rv$progress <- 0
       rv$progress_msg <- "Análisis cancelado por el usuario."
-      animating(FALSE) # <-- Detener animación al cancelar
-      shinyjs::enable("run_btn")
-      shinyjs::hide("cancel_btn")
-      showNotification("Análisis cancelado. Los resultados en segundo plano serán descartados.")
+      if (inst_use_mirai && !is.null(inst_current_job)) try(mirai::stop_mirai(inst_current_job), silent = TRUE)
+      inst_set_busy(FALSE)
+      showNotification("Análisis cancelado.", type = "warning")
     })
 
     if (!is.null(institutional_task)) {
-      # Observador de estado: controla botones y detiene la animación
-      observe({
-        req(institutional_task)
-        status <- institutional_task$status()
-
-        if (status == "running") {
-          rv$task_running <- TRUE
-        } else {
-          # Detener animación
-          rv$task_running <- FALSE
-          shinyjs::enable("run_btn")
-          shinyjs::hide("cancel_btn")
+      observeEvent(institutional_task$status(), {
+        st <- institutional_task$status()
+        if (!isTRUE(rv$task_running) || isTRUE(rv$cancelled)) return()
+        if (st == "success") {
+          res <- tryCatch(institutional_task$result(), error = function(e) NULL)
+          inst_finish_ok(res)
+        } else if (st == "error") {
+          err <- tryCatch({ institutional_task$result(); "error desconocido" }, error = function(e) conditionMessage(e))
+          inst_finish_error(err)
         }
-
-        if (status == "error") {
-          rv$progress <- 0
-          rv$progress_msg <- "Error en el análisis."
-          try(
-            {
-              err_msg <- conditionMessage(institutional_task$result())
-              showNotification(paste("Error:", err_msg), type = "error")
-            },
-            silent = TRUE
-          )
-        }
-      })
-
-      # Observador para procesar resultados exitosos
-      observeEvent(institutional_task$result(), {
-        req(institutional_task$status() == "success")
-
-        # Si el usuario canceló, ignoramos el resultado
-        if (rv$cancelled) {
-          return()
-        }
-
-        res <- institutional_task$result()
-        req(!is.null(res))
-
-        rv$result <- res
-        rv$task_running <- FALSE
-        animating(FALSE) # <-- Detener animación al completar
-        updateSelectInput(session, "ticker_detalle",
-          choices  = res$summary$Ticker,
-          selected = res$summary$Ticker[[1]]
-        )
-
-        wb_tmp <- tempfile(fileext = ".xlsx")
-        inst_export_analysis_to_excel(res, wb_tmp)
-        rv$wb_path <- wb_tmp
-
-        rv$progress <- 100
-        rv$progress_msg <- sprintf(
-          "✅ Análisis completado: %d tickers procesados",
-          nrow(res$summary)
-        )
-        showNotification("Análisis completado con éxito.", type = "message")
-      })
+      }, ignoreInit = TRUE)
     }
 
     output$download_excel <- downloadHandler(
