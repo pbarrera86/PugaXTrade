@@ -6,7 +6,7 @@
 function pugaAuthPost(action, fields) {
   var form = document.createElement('form');
   form.method = 'POST';
-  form.action = '/?action=' + action;
+  form.action = '/auth/' + action;
   Object.keys(fields).forEach(function (name) {
     var input = document.createElement('input');
     input.type = 'hidden'; input.name = name; input.value = fields[name];
