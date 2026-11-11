@@ -19,6 +19,7 @@ const assert = require('node:assert/strict');
     await page.evaluate(() => window.pugaAuthPost('logout', {}));
     await logoutNavigation;
     assert.equal(page.url(), 'http://localhost:3838/');
+    await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     assert.match(await page.textContent('body'), /Iniciar sesi/);
     console.log('PASS: browser form origin preserved; login reaches validation; logout redirects');
   } finally {
