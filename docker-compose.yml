@@ -14,7 +14,7 @@ services:
     networks:
       - dokploy-network
 
-    environment:
+    environment: &app_environment
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
 
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
@@ -46,11 +46,26 @@ services:
       - shiny_logs:/var/log/shiny-server
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -H 'Host: localhost' http://127.0.0.1:3838/ping.html >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS -H 'Host: localhost' http://127.0.0.1:3838/healthz >/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 90s
+
+  email-worker:
+    image: pugaxtrade:latest
+    restart: unless-stopped
+    init: true
+    working_dir: /srv/shiny-server/app
+    command: ["Rscript", "scripts/email_worker.R"]
+    environment: *app_environment
+    depends_on:
+      pugaxtrade:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks:
+      - dokploy-network
 
 volumes:
   shiny_logs:

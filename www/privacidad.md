@@ -1,6 +1,6 @@
 Aviso de Privacidad
 
-Última actualización: 03/10/2025
+Última actualización: 11/11/2026
 Responsable: PEDRO BARRERA PUGA, RFC BAPP860629B28, domicilio LOS MORALES 13, EL CARRIZAL, QUERÉTARO, QUERÉTARO, MÉXICO, C.P. 76030 (“nosotros”, “PugaX Trade Inteligente”).
 Contacto de privacidad: p.barrera.puga@gmail.com
  · Tel: +52 5951148765
@@ -45,7 +45,7 @@ Compartimos datos con proveedores que actúan como encargados:
 
 Stripe, Inc. (procesamiento de pagos).
 
-Proveedor de hosting (p. ej., shinyapps.io / Posit).
+Hostinger/Dokploy (alojamiento de la aplicación) y Neon (base de datos PostgreSQL).
 
 Proveedor de correo (SMTP, p. ej., Gmail/Workspace).
 Estas operaciones pueden implicar transferencias internacionales. Implementamos salvaguardas contractuales y técnicas razonables. No vendemos tus datos personales.

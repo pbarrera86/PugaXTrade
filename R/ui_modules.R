@@ -22,37 +22,28 @@ section_account_ui <- function(ns) {
   )
 }
 
-section_membership_ui <- function(ns) {
-  stripe_ok <- tryCatch(
-    isTRUE(stripe_has_env()) || exists("auth_create_checkout_session"),
-    error = function(e) FALSE
-  )
-  tagList(
-    div(
-      class = "section account-grid",
-      div(
-        class = "account-card",
-        h4("Plan anual"),
-        p("Precio: ", strong("29.99 USD / año")),
-        actionButton(ns("mb_pay"), "Pagar con tarjeta (Stripe)", class = "btn btn-primary"),
-        tags$hr(),
-        h4("Renovación"),
-        p(class = "text-muted", "Si tu integración con Stripe no está configurada, estos botones mostrarán aviso y no fallarán."),
-        div(
-          class = "d-flex gap-2",
-          actionButton(ns("mb_cancel_auto"), "Cancelar renovación automática", class = "btn btn-warning"),
-          actionButton(ns("mb_reactivate_auto"), "Reactivar renovación automática", class = "btn btn-warning"),
-          actionButton(ns("mb_renew_now"), "Renovar ahora", class = "btn btn-primary")
-        )
-      ),
-      div(
-        class = "account-card",
-        h4("Estado"),
-        uiOutput(ns("membership_state")),
-        uiOutput(ns("renewal_state"))
-      )
-    )
-  )
+section_membership_ui <- function(ns, user = NULL) {
+  sid <- if(is.null(user)) "" else user$stripe_subscription_id[[1]] %||% ""
+  customer <- if(is.null(user)) "" else user$stripe_customer_id[[1]] %||% ""
+  status <- if(is.null(user) || is.null(user$stripe_status)) "" else user$stripe_status[[1]] %||% ""
+  canceled <- !is.null(user) && isTRUE(user$stripe_cancel_at_period_end[[1]])
+  admin <- !is.null(user) && (is_super_admin(user) || db_is_admin(user))
+  existing <- nzchar(sid) && !status %in% c("canceled","incomplete_expired")
+  tagList(div(class="section account-grid",
+    div(class="account-card",
+      h4("Plan anual"),
+      p("Precio: ",strong("29.99 USD / año")),
+      p(class="text-muted","Los impuestos aplicables y el importe final se muestran antes de confirmar el pago en Stripe."),
+      if(!admin && !existing) actionButton(ns("mb_pay"),"Pagar con tarjeta (Stripe)",class="btn btn-primary"),
+      if(nzchar(customer)) tagList(tags$hr(),h4("Renovación"),
+        p(class="text-muted","Administra tu suscripción y método de pago. Al cancelar la renovación conservarás acceso hasta el fin del periodo pagado."),
+        div(class="d-flex flex-wrap gap-2",
+          if(existing && !canceled) actionButton(ns("mb_cancel_auto"),"Cancelar renovación automática",class="btn btn-warning"),
+          if(existing && canceled) actionButton(ns("mb_reactivate_auto"),"Reactivar renovación automática",class="btn btn-warning"),
+          actionButton(ns("mb_renew_now"),"Abrir portal de facturación",class="btn btn-primary")))
+    ),
+    div(class="account-card",h4("Estado"),uiOutput(ns("membership_state")),uiOutput(ns("renewal_state")))
+  ))
 }
 
 section_admin_ui <- function(ns) {

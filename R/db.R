@@ -180,33 +180,7 @@ pool_init <- function() {
 # =========================
 # HELPER: Generar siguiente código refXXX
 # =========================
-db_generate_next_ref_code <- function(con) {
-  # Buscamos todos los códigos que cumplan patrón 'ref' + dígitos
-  # Nota: esto puede ser lento si hay millones de usuarios, pero para esta escala está bien.
-  # Una secuencia SQL pura sería mejor, pero esto mantiene la lógica en R.
-
-  # 1. Obtener todos los ref...
-  df <- DBI::dbGetQuery(con, "select referral_code from users where referral_code like 'ref%'")
-
-  if (nrow(df) == 0) {
-    return("ref001")
-  }
-
-  codes <- df$referral_code[!is.na(df$referral_code)]
-  # Extraer parte numérica
-  nums <- suppressWarnings(as.integer(substring(codes, 4)))
-  nums <- nums[!is.na(nums)]
-
-  # Filter out timestamp-based codes (very large numbers)
-  nums <- nums[nums < 1000000]
-
-  if (length(nums) == 0) {
-    return("ref001")
-  }
-
-  next_val <- max(nums) + 1
-  sprintf("ref%03d", next_val)
-}
+db_generate_next_ref_code <- function(con) paste0("ref", rnd_token(12))
 
 rnd_token <- function(n = 32L) {
   # sodium::random() usa /dev/urandom — criptográficamente seguro
@@ -325,9 +299,9 @@ db_register_user <- function(username, email, name, country, phone, referred_by 
          username, email, name, country, phone, password_hash,
          created_at, trial_expires_at, active, membership_active,
          referral_code, referred_by, referral_wallet,
-         email_verified, verification_token
+         email_verified, verification_token, verification_expires_at, terms_accepted_at, terms_version
        )
-       values($1,$2,$3,$4,$5,$6,now(),$7,true,false,$8,$9,0.0, false, $10)
+       values($1,$2,$3,$4,$5,$6,now(),$7,true,false,$8,$9,0.0, false, $10, now()+interval '48 hours', now(), '2026-11-11')
        returning *",
       params = list(
         username, email, name, country,
@@ -336,24 +310,28 @@ db_register_user <- function(username, email, name, country, phone, referred_by 
         trial,
         ref_code,
         valid_referrer,
-        ver_token
+        auth_token_hash(ver_token)
       )
     )
 
     DBI::dbCommit(con)
-    list(ok = TRUE, user = u)
+    list(ok = TRUE, user = u, verification_token = ver_token)
   })
 }
 
 # Guarda HASH como STRING
 db_set_password <- function(username, new_password) {
+  if (!auth_valid_password(new_password)) stop("La contraseña debe tener entre 8 y 1024 bytes.")
   .with_conn({
-    ph <- sodium::password_store(new_password) # string listo para DB
-    DBI::dbExecute(con,
-      "update users set password_hash=$1 where lower(username)=lower($2)",
-      params = list(ph, username)
-    )
-    invisible(TRUE)
+    DBI::dbWithTransaction(con, {
+      u <- DBI::dbGetQuery(con, "SELECT id FROM users WHERE lower(username)=lower($1) FOR UPDATE", params=list(username))
+      if (nrow(u) != 1L) stop("Cuenta no disponible.")
+      DBI::dbExecute(con, "UPDATE users SET password_hash=$1 WHERE id=$2", params=list(sodium::password_store(new_password),u$id[[1]]))
+      DBI::dbExecute(con, "DELETE FROM sessions WHERE user_id=$1", params=list(u$id[[1]]))
+      DBI::dbExecute(con, "DELETE FROM password_resets WHERE user_id=$1", params=list(u$id[[1]]))
+      DBI::dbExecute(con, "DELETE FROM login_handoffs WHERE user_id=$1", params=list(u$id[[1]]))
+      TRUE
+    })
   })
 }
 
@@ -365,19 +343,19 @@ db_login <- function(user_or_email, password) {
       where (lower(username)=lower($1) or lower(email)=lower($1)) and active = true
       limit 1", params = list(user_or_email))
     if (nrow(u) == 0) {
-      return(list(ok = FALSE, message = "Usuario no encontrado o inactivo."))
+      return(list(ok = FALSE, message = "Usuario o contraseña incorrectos."))
     }
 
     hash <- u$password_hash[[1]]
     if (is.na(hash) || !is.character(hash) || !nzchar(hash)) {
-      return(list(ok = FALSE, message = "Contraseña incorrecta."))
+      return(list(ok = FALSE, message = "Usuario o contraseña incorrectos."))
     }
     pw_ok <- tryCatch(sodium::password_verify(hash, password), error = function(e) {
       message("[DB] password_verify error (hash corrupto?): ", e$message)
       FALSE
     })
     if (!isTRUE(pw_ok)) {
-      return(list(ok = FALSE, message = "Contraseña incorrecta."))
+      return(list(ok = FALSE, message = "Usuario o contraseña incorrectos."))
     }
 
     if (!isTRUE(u$email_verified[[1]])) {
@@ -494,60 +472,6 @@ db_trial_days_left <- function(user_row) {
   as.integer(as.Date(user_row$trial_expires_at[[1]]) - Sys.Date())
 }
 
-db_membership_activate <- function(user_id, stripe_customer_id = NULL, stripe_subscription_id = NULL) {
-  .with_conn({
-    # Check if already active to avoid double commission
-    curr <- DBI::dbGetQuery(con, "select membership_active, referred_by from users where id=$1", params = list(user_id))
-    already_active <- FALSE
-    referrer_id <- NULL
-    if (nrow(curr) > 0) {
-      if (isTRUE(curr$membership_active[[1]])) already_active <- TRUE
-      referrer_id <- curr$referred_by[[1]]
-    }
-
-    DBI::dbExecute(con, "
-      update users set
-        membership_active = true,
-        membership_activated_at = now(),
-        trial_expires_at = null,
-        stripe_customer_id = coalesce($1, stripe_customer_id),
-        stripe_subscription_id = coalesce($2, stripe_subscription_id)
-      where id = $3",
-      params = list(stripe_customer_id, stripe_subscription_id, user_id)
-    )
-
-    # Commission Logic (30% of 29.99 = ~9.00 USD)
-    # Only if NOT already active and HAS a referrer
-    if (!already_active && !is.null(referrer_id) && !is.na(referrer_id)) {
-      # Check if referrer is Admin (pedrobp86) -> No commission for admin self-assignment logic?
-      # User said: "no se asigna comisión" if default admin.
-      # So we check if referrer is 'pedrobp86'
-      ref_u <- DBI::dbGetQuery(con, "select username, email from users where id=$1", params = list(referrer_id))
-      if (nrow(ref_u) > 0) {
-        default_ref_username <- Sys.getenv("DEFAULT_REFERRER_USERNAME", "")
-        r_name <- ref_u$username[[1]]
-        r_email <- ref_u$email[[1]]
-        super_email <- Sys.getenv("SUPER_ADMIN_EMAIL", "")
-        # No pagar comisión al referidor por defecto (admin) para evitar auto-beneficio
-        is_default_ref <- (nzchar(default_ref_username) && tolower(r_name) == tolower(default_ref_username)) ||
-                          (nzchar(super_email) && tolower(r_email) == tolower(super_email))
-        if (!is_default_ref) {
-          commission_amount <- as.numeric(Sys.getenv("REFERRAL_COMMISSION_AMOUNT", "9.00"))
-          message(sprintf("[Commission] Paying %.2f to %s for user %s", commission_amount, r_name, user_id))
-          DBI::dbExecute(con, "
-            UPDATE users
-            SET referral_wallet = COALESCE(referral_wallet, 0) + $1
-            WHERE id = $2",
-            params = list(commission_amount, referrer_id)
-          )
-        }
-      }
-    }
-
-    invisible(TRUE)
-  })
-}
-
 # =========================
 # PASSWORD RESET
 # =========================
@@ -557,7 +481,7 @@ db_create_reset_token <- function(user_id, ttl_hours = 48) {
     DBI::dbExecute(con,
       "insert into password_resets(token,user_id,created_at,expires_at,used_at)
        values($1,$2,now(), now() + make_interval(hours => $3), null)",
-      params = list(token, user_id, as.integer(ttl_hours))
+      params = list(auth_token_hash(token), user_id, as.integer(ttl_hours))
     )
     token
   })
@@ -568,34 +492,38 @@ db_reset_token_valid <- function(token) {
     t <- DBI::dbGetQuery(con, "
       select * from password_resets
        where token=$1 and used_at is null and expires_at > now()
-       limit 1", params = list(token))
+       limit 1", params = list(auth_token_hash(token)))
     nrow(t) > 0
   })
 }
 
 db_reset_password_with_token <- function(token, new_password) {
+  if (!auth_valid_password(new_password)) return(FALSE)
   .with_conn({
-    t <- DBI::dbGetQuery(con, "select * from password_resets where token=$1 limit 1", params = list(token))
-    if (nrow(t) == 0) {
-      return(FALSE)
-    }
-    if (!is.na(t$used_at[[1]]) || as.POSIXct(t$expires_at[[1]]) < Sys.time()) {
-      return(FALSE)
-    }
-    ph <- sodium::password_store(new_password)
-    DBI::dbExecute(con, "update users set password_hash=$1 where id=$2", params = list(ph, t$user_id[[1]]))
-    DBI::dbExecute(con, "update password_resets set used_at=now() where token=$1", params = list(token))
-    TRUE
+    DBI::dbWithTransaction(con, {
+      initial <- DBI::dbGetQuery(con, "SELECT user_id FROM password_resets WHERE token=$1 AND used_at IS NULL AND expires_at>now()", params=list(auth_token_hash(token)))
+      if (nrow(initial)) DBI::dbGetQuery(con, "SELECT id FROM users WHERE id=$1 FOR UPDATE",params=list(initial$user_id[[1]]))
+      t <- DBI::dbGetQuery(con, "SELECT user_id FROM password_resets WHERE token=$1 AND used_at IS NULL AND expires_at>now() FOR UPDATE", params=list(auth_token_hash(token)))
+      if (!nrow(t)) FALSE else {
+        uid <- t$user_id[[1]]
+        DBI::dbGetQuery(con, "SELECT id FROM users WHERE id=$1 FOR UPDATE", params=list(uid))
+        DBI::dbExecute(con, "UPDATE users SET password_hash=$1 WHERE id=$2", params=list(sodium::password_store(new_password),uid))
+        DBI::dbExecute(con, "UPDATE password_resets SET used_at=now() WHERE user_id=$1 AND used_at IS NULL",params=list(uid))
+        DBI::dbExecute(con, "DELETE FROM sessions WHERE user_id=$1",params=list(uid))
+        DBI::dbExecute(con, "DELETE FROM login_handoffs WHERE user_id=$1",params=list(uid))
+        TRUE
+      }
+    })
   })
 }
 
 db_verify_email <- function(token) {
   .with_conn({
-    u <- DBI::dbGetQuery(con, "select id from users where verification_token=$1 limit 1", params = list(token))
+    u <- DBI::dbGetQuery(con, "select id from users where verification_token=$1 AND verification_expires_at>now() limit 1", params = list(auth_token_hash(token)))
     if (nrow(u) == 0) {
       return(FALSE)
     }
-    DBI::dbExecute(con, "update users set email_verified=true, verification_token=NULL where id=$1", params = list(u$id[[1]]))
+    DBI::dbExecute(con, "update users set email_verified=true, verification_token=NULL, verification_expires_at=NULL where id=$1", params = list(u$id[[1]]))
     TRUE
   })
 }
@@ -609,7 +537,7 @@ db_issue_session_token <- function(user_id, days = 7) {
     DBI::dbExecute(con, "delete from sessions where user_id=$1", params = list(user_id))
     DBI::dbExecute(con,
       "insert into sessions(token,user_id,expires_at) values($1,$2, now() + make_interval(days => $3))",
-      params = list(tok, user_id, as.integer(days))
+      params = list(auth_token_hash(tok), user_id, as.integer(days))
     )
     tok
   })
@@ -622,7 +550,7 @@ db_find_user_by_token <- function(tok) {
   .with_conn({
     q <- DBI::dbGetQuery(con, "
       select u.* from sessions s join users u on u.id = s.user_id
-       where s.token=$1 and s.expires_at > now() limit 1", params = list(tok))
+       where s.token=$1 and s.expires_at > now() AND u.active = true AND u.email_verified = true limit 1", params = list(auth_token_hash(tok)))
     if (nrow(q) == 0) {
       return(NULL)
     }
@@ -635,7 +563,7 @@ db_delete_token <- function(tok) {
     return(invisible())
   }
   .with_conn({
-    DBI::dbExecute(con, "delete from sessions where token=$1", params = list(tok))
+    DBI::dbExecute(con, "delete from sessions where token=$1", params = list(auth_token_hash(tok)))
     invisible(TRUE)
   })
 }
@@ -665,7 +593,7 @@ db_is_rate_limited <- function(identifier, max_failures = 5L, window_minutes = 1
       params = list(tolower(trimws(identifier)), as.integer(window_minutes))
     )
     isTRUE(res$n[[1]] >= max_failures)
-  }), error = function(e) FALSE)
+  }), error = function(e) TRUE)
 }
 
 # Limpia intentos antiguos (llamar periódicamente)
@@ -736,6 +664,7 @@ db_manual_activate <- function(user_id, days_duration) {
          active = true,
          membership_active = true,
          membership_activated_at = now(),
+         manual_access_expires_at = now() + make_interval(days => $1),
          trial_expires_at = now() + make_interval(days => $1),
          membership_expires_at = now() + make_interval(days => $1)
        where id = $2",
@@ -750,6 +679,7 @@ db_manual_deactivate <- function(user_id) {
     DBI::dbExecute(con,
       "update users set
          membership_active = false,
+         manual_access_expires_at = NULL,
          trial_expires_at = now() - interval '1 day'
        where id = $1",
       params = list(user_id)
@@ -841,8 +771,8 @@ db_save_ticker_cache <- function(ticker, data_str) {
 db_clear_ticker_cache <- function() {
   .with_conn({
     # Limpia ambas tablas de caché
-    DBI::dbExecute(con, "TRUNCATE TABLE cached_analysis")
-    DBI::dbExecute(con, "DROP TABLE IF EXISTS ticker_cache") # Elimina institucional para forzar normalización
+    DBI::dbExecute(con, "DELETE FROM cached_analysis")
+    if (DBI::dbExistsTable(con, "ticker_cache")) DBI::dbExecute(con, "DELETE FROM ticker_cache")
     invisible(TRUE)
   })
 }

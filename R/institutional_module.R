@@ -51,7 +51,8 @@ institutional_ui <- function(id) {
               ),
               br(),
               uiOutput(ns("progress_ui")),
-              actionButton(ns("clear_cache_btn"), "Limpiar Caché Local", class = "btn-danger w-100", icon = icon("trash"))
+              textOutput(ns("data_timestamp")),
+              actionButton(ns("clear_cache_btn"), "Limpiar resultados de esta sesión", class = "btn-secondary w-100", icon = icon("trash"))
             )
           )
         ),
@@ -101,6 +102,7 @@ institutional_ui <- function(id) {
               class = "card p-3 mb-4",
               h4("Detalle por indicador"),
               selectInput(ns("ticker_detalle"), "Selecciona ticker para profundizar", choices = NULL, width = "100%"),
+              p(class="text-muted", "Graham y la valoración combinada del resumen utilizan métodos distintos y pueden dar resultados diferentes."),
               uiOutput(ns("ticker_badges_ui")),
               DTOutput(ns("detail_tbl"))
             )
@@ -123,6 +125,7 @@ institutional_ui <- function(id) {
             div(
               class = "card p-3 mb-4",
               h4("Backtesting (1 Año Histórico)"),
+              p(class="text-muted", "Simulación RSI independiente del ranking. Señales del cierre anterior; coste supuesto de 10 puntos base por cambio de posición. No garantiza rendimientos futuros."),
               DTOutput(ns("backtest_tbl"))
             )
           )
@@ -165,17 +168,7 @@ institutional_server <- function(id, user_reactive) {
     )
 
     # ---- Lógica de Bloqueo / Banner Local ----
-    can_analyze <- reactive({
-      u <- user_reactive()
-      if (is.null(u)) {
-        return(FALSE)
-      }
-      if (is_super_admin(u) || db_is_admin(u) || db_membership_is_active(u)) {
-        return(TRUE)
-      }
-      left <- suppressWarnings(as.numeric(db_trial_days_left(u)[1]))
-      isTRUE(!is.na(left) && left >= 0)
-    })
+    can_analyze <- function() db_can_analyze(user_reactive())
 
     # ---- Módulo: Screener de Extremos Locales (pestaña "Extremos Locales (QMin)") ----
     extremos_server("ext", can_analyze = can_analyze)
@@ -222,6 +215,11 @@ institutional_server <- function(id, user_reactive) {
       }
     }
 
+    output$data_timestamp <- renderText({
+      req(rv$result,rv$started)
+      paste0("Análisis ejecutado: ",format(rv$started,tz="UTC",usetz=TRUE),
+        ". Datos de Yahoo Finance/Finviz; el uso de caché puede incluir datos de hasta 12 horas antes. No son cotizaciones garantizadas en tiempo real.")
+    })
     output$progress_ui <- renderUI({
       st <- rv$status
       bar <- function(pct, cls, label) {
@@ -275,31 +273,15 @@ institutional_server <- function(id, user_reactive) {
     })
 
     observeEvent(input$clear_cache_btn, {
-      # 1. Limpiar caché en disco (archivos RDS locales)
-      cache_path <- file.path(getwd(), "cache")
-      if (dir.exists(cache_path)) {
-        unlink(cache_path, recursive = TRUE, force = TRUE)
-        dir.create(cache_path, showWarnings = FALSE)
-      }
-
-      # 2. Limpiar caché Postgres usando la función centralizada de db.R
-      # db_clear_ticker_cache() limpia: cached_analysis (TRUNCATE) + ticker_cache (DROP)
-      if (exists("db_clear_ticker_cache", mode = "function")) {
-        tryCatch(
-          {
-            db_clear_ticker_cache()
-            message("[INST] Caché Postgres limpiada via db_clear_ticker_cache().")
-          },
-          error = function(e) message("[INST] Aviso al limpiar caché Postgres: ", e$message)
-        )
-      }
-
-      # 3. Resetear flag de inicialización del pool local para forzar re-creación de tabla
-      if (exists("pg_cache_initialized", envir = .GlobalEnv)) {
-        tryCatch(assign("pg_cache_initialized", FALSE, envir = .GlobalEnv), error = function(e) NULL)
-      }
-
-      showNotification("Caché local y en DB limpiadas. El próximo análisis descargará datos frescos.", type = "message")
+      req(can_analyze())
+      if (isTRUE(rv$task_running)) return()
+      rv$result <- NULL
+      rv$results <- NULL
+      if (!is.null(rv$wb_path)) unlink(rv$wb_path)
+      rv$wb_path <- NULL
+      rv$status <- "idle"
+      rv$progress_msg <- "Esperando análisis..."
+      showNotification("Resultados de esta sesión eliminados.", type = "message")
     })
 
     # ---- Tarea en segundo plano para el Análisis Institucional ----
@@ -408,6 +390,7 @@ institutional_server <- function(id, user_reactive) {
       if (isTRUE(rv$task_running)) return()
       req(can_analyze())
       tickers <- inst_parse_tickers(input$tickers)
+      validate(need(length(tickers) <= 1500L, "El máximo por análisis es de 1500 símbolos."))
       if (length(tickers) == 0) {
         showNotification("Ingresa al menos un ticker válido.", type = "warning")
         return()
@@ -478,7 +461,7 @@ institutional_server <- function(id, user_reactive) {
         paste0("analisis_bursatil_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".xlsx")
       },
       content = function(file) {
-        req(rv$result)
+        req(can_analyze(), rv$result)
         # Usar el archivo pre-generado si existe (evita re-ejecutar la exportación completa)
         if (!is.null(rv$wb_path) && file.exists(rv$wb_path)) {
           file.copy(rv$wb_path, file, overwrite = TRUE)

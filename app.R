@@ -115,8 +115,8 @@ my_theme <- bs_theme(
     if (length(kv) >= 2 && trimws(kv[1]) == name) {
       # Solo aceptamos tokens hex (nuestro rnd_token genera solo hex)
       raw <- paste(kv[-1], collapse = "=")
-      clean <- gsub("[^a-fA-F0-9]", "", utils::URLdecode(raw))
-      return(clean)
+      decoded <- utils::URLdecode(raw)
+      return(if(grepl("^[a-f0-9]{128}$",decoded)) decoded else "")
     }
   }
   ""
@@ -137,30 +137,27 @@ my_theme <- bs_theme(
 }
 
 # Endpoint: /auth/set-session — establece la cookie HttpOnly y redirige al app
-.handle_set_session <- function(req) {
-  q <- shiny::parseQueryString(req$QUERY_STRING %||% "")
-  tok <- gsub("[^a-fA-F0-9]", "", q$tok %||% "")  # Sanitizar: solo hex
-  if (!nzchar(tok)) {
-    return(shiny::httpResponse(400, "text/plain", "Bad Request"))
-  }
-  # Validar que el token existe en la DB antes de setear la cookie
-  u <- tryCatch(db_find_user_by_token(tok), error = function(e) NULL)
-  if (is.null(u) || nrow(u) == 0) {
-    return(shiny::httpResponse(401, "text/plain", "Token invalido o expirado"))
-  }
-  cookie <- .make_set_cookie("puga_auth", tok, max_age_seconds = 604800L)
-  if (.is_https(req)) cookie <- paste0(cookie, "; Secure")
-  redirect_url <- PUBLIC_BASE_URL
-  shiny::httpResponse(302, "text/plain", "Redirecting...",
-    list("Set-Cookie" = cookie, "Location" = redirect_url))
+.auth_response <- function(status, body, headers = list()) {
+  shiny::httpResponse(status, "text/plain", body,
+    c(list("Cache-Control"="no-store", "Referrer-Policy"="no-referrer", "X-Content-Type-Options"="nosniff"),headers))
 }
-
-# Endpoint: /auth/logout — limpia la cookie HttpOnly y redirige al app
+.auth_origin_ok <- function(req) {
+  identical(req$REQUEST_METHOD, "POST") && identical(req$HTTP_ORIGIN, sub("/+$", "", PUBLIC_BASE_URL))
+}
+.handle_set_session <- function(req) {
+  if (!.auth_origin_ok(req)) return(.auth_response(403,"Forbidden"))
+  raw <- req$rook.input$read(4096L)
+  q <- shiny::parseQueryString(rawToChar(raw))
+  tok <- db_redeem_login_handoff(q$code %||% "")
+  if (is.null(tok)) return(.auth_response(401,"Enlace de acceso vencido. Inicia sesión de nuevo."))
+  cookie <- paste0(.make_set_cookie("puga_auth",tok), "; Secure")
+  .auth_response(303,"Redirecting",list("Set-Cookie"=cookie,"Location"=PUBLIC_BASE_URL))
+}
 .handle_logout_cookie <- function(req) {
-  clear_cookie <- .make_set_cookie("puga_auth", "", clear = TRUE)
-  if (.is_https(req)) clear_cookie <- paste0(clear_cookie, "; Secure")
-  shiny::httpResponse(302, "text/plain", "Logged out",
-    list("Set-Cookie" = clear_cookie, "Location" = PUBLIC_BASE_URL))
+  if (!.auth_origin_ok(req)) return(.auth_response(403,"Forbidden"))
+  tok <- .parse_cookie_value(req$HTTP_COOKIE %||% "", "puga_auth")
+  if (nzchar(tok)) db_delete_token(tok)
+  .auth_response(303,"Logged out",list("Set-Cookie"=paste0(.make_set_cookie("puga_auth","",clear=TRUE),"; Secure"),"Location"=PUBLIC_BASE_URL))
 }
 
 
@@ -170,6 +167,7 @@ my_theme <- bs_theme(
 # ----------------- Núcleo y Auth/DB -----------------
 source("R/helpers.R", encoding = "UTF-8")
 source("R/db.R", encoding = "UTF-8") # pool + helpers Postgres
+source("R/security.R", encoding = "UTF-8")
 source("R/finance_core.R", encoding = "UTF-8") # ANÁLISIS + Excel
 source("R/institutional_core.R", encoding = "UTF-8")
 source("R/extremos_core.R", encoding = "UTF-8") # Screener Extremos Locales (QMin/QMax)
@@ -185,7 +183,7 @@ source("R/institutional_module.R", encoding = "UTF-8")
 source("R/extremos_module.R", encoding = "UTF-8")
 # standard_analysis_module.R eliminado — solo existe el módulo institucional
 source("R/ui_modules.R", encoding = "UTF-8")
-source("R/stripe_webhooks.R", encoding = "UTF-8")
+source("R/billing.R", encoding = "UTF-8")
 # ----------------- Stripe helpers mejorados -----------------
 stripe_has_env <- function() {
   all(nzchar(Sys.getenv(c("STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_PRICE_ID"))))
@@ -317,6 +315,7 @@ stripe_checkout_fallback <- function(user_row) {
       cancel_url = cancel_url,
       customer_email = email,
       client_reference_id = user_row$id[[1]],
+      "subscription_data[metadata][user_id]" = as.character(user_row$id[[1]]),
       "line_items[0][price]" = price,
       "line_items[0][quantity]" = 1,
       allow_promotion_codes = "true",
@@ -440,24 +439,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     institutional_server("inst", user_reactive = user_reactive)
 
 
-    # ---- Estado de acceso al análisis (prueba vs membresía) ----
-    can_analyze <- reactive({
-      u <- user_reactive()
-      if (is.null(u)) {
-        return(FALSE)
-      }
-      if (is_super_admin(u)) {
-        return(TRUE)
-      }
-      if (db_is_admin(u)) {
-        return(TRUE)
-      }
-      if (db_membership_is_active(u)) {
-        return(TRUE)
-      }
-      left <- suppressWarnings(as.numeric(db_trial_days_left(u)[1]))
-      isTRUE(!is.na(left) && left >= 0)
-    })
+    # ---- Estado de acceso validado contra DB antes de cada acción ----
+    can_analyze <- function() db_can_analyze(user_reactive())
     trial_left <- reactive({
       u <- user_reactive()
       if (is.null(u)) {
@@ -534,7 +517,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       switch(current_section,
         analysis   = institutional_ui(ns("inst")),
         account    = section_account_ui(ns),
-        membership = section_membership_ui(ns),
+        membership = section_membership_ui(ns,user_reactive()),
         admin      = section_admin_ui(NS(ns("admin_mod"))),
         referral   = section_referral_ui(ns)
       )
@@ -660,6 +643,10 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         return()
       }
 
+      if (nchar(new_p1) < 8L) {
+        showNotification("La contraseña debe tener al menos 8 caracteres.", type = "error")
+        return()
+      }
       # 2. Nueva == Anterior (Requisito usuario)
       if (new_p1 == old_p) {
         showNotification("La nueva contraseña no puede ser igual a la anterior. Intenta agregar símbolos o números (ej: Puga#2025!).", type = "error", duration = 8)
@@ -677,6 +664,9 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       tryCatch(
         {
           db_set_password(u$username[[1]], new_p1)
+          session$userData$session_token(NULL)
+          session$userData$current_user(NULL)
+          session$sendCustomMessage("clearSessionCookie", list())
 
           # Send Email Notification — NUNCA incluir contraseña en texto plano
           f_generic <- get0("auth_send_generic_email", envir = .GlobalEnv, inherits = TRUE)
@@ -718,6 +708,11 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
         showNotification("Inicia sesión primero.", type = "error")
         return()
       }
+      if (!is.na(u$stripe_subscription_id[[1]]) && nzchar(u$stripe_subscription_id[[1]]) &&
+          !is.null(u$stripe_status) && u$stripe_status[[1]] %in% c("active","trialing","past_due","unpaid","incomplete","paused")) {
+        showNotification("Ya tienes una suscripción. Adminístrala desde Renovar ahora para evitar un cobro duplicado.",type="warning")
+        return()
+      }
       if (is_super_admin(u)) {
         showNotification("Tu cuenta es perpetua (admin).", type = "message")
         return()
@@ -725,15 +720,8 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       shinyjs::disable(ns("mb_pay"))
       on.exit(shinyjs::enable(ns("mb_pay")), add = TRUE)
 
-      f_checkout <- get0("auth_create_checkout_session", envir = .GlobalEnv, inherits = TRUE)
-      if (is.function(f_checkout)) {
-        res <- try(f_checkout(u), silent = TRUE)
-        if (inherits(res, "try-error") || !isTRUE(res$ok)) {
-          res <- stripe_checkout_fallback(u)
-        }
-      } else {
-        res <- stripe_checkout_fallback(u)
-      }
+      res <- try(auth_create_checkout_session(u), silent=TRUE)
+      if (inherits(res,"try-error")) res <- list(ok=FALSE,message="No se pudo contactar con el servicio de pagos. Intenta de nuevo.")
       if (!isTRUE(res$ok)) {
         showNotification(res$message %||% "No se pudo iniciar el pago.", type = "error", duration = 8)
         return()
@@ -816,7 +804,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       }
       if (!done) {
         sub_id <- u$stripe_subscription_id[[1]]
-        if (nzchar(sub_id)) done <- isTRUE(stripe_set_cancel_at_period_end(sub_id, TRUE))
+        if (!is.na(sub_id) && nzchar(sub_id)) done <- isTRUE(stripe_set_cancel_at_period_end(sub_id, TRUE))
       }
       if (!done) {
         showNotification("No se pudo cancelar la renovación.", type = "error")
@@ -846,7 +834,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
       }
       if (!done) {
         sub_id <- u$stripe_subscription_id[[1]]
-        if (nzchar(sub_id)) done <- isTRUE(stripe_set_cancel_at_period_end(sub_id, FALSE))
+        if (!is.na(sub_id) && nzchar(sub_id)) done <- isTRUE(stripe_set_cancel_at_period_end(sub_id, FALSE))
       }
       if (!done) {
         showNotification("No se pudo reactivar la renovación.", type = "error")
@@ -914,39 +902,11 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 
 # ----------------- App raíz -----------------
 ui <- function(req) {
-  # ── Rutas HTTP especiales ────────────────────────────────────────────────────
-  q_sys <- shiny::parseQueryString(req$QUERY_STRING %||% "")
-  
-  if (identical(req$PATH_INFO, "/webhook") || identical(q_sys$action, "webhook")) {
-    return(handle_stripe_webhook(req))
-  }
-  if (identical(req$PATH_INFO, "/auth/set-session") || identical(q_sys$action, "set-session")) {
-    return(.handle_set_session(req))
-  }
-  if (identical(req$PATH_INFO, "/auth/logout") || identical(q_sys$action, "logout")) {
-    return(.handle_logout_cookie(req))
-  }
-
-  # ── App normal: leer cookie HttpOnly del header HTTP ────────────────────────
-  # El browser envía la cookie automáticamente. La leemos server-side para
-  # inyectar el token en el HTML inicial sin que JS pueda leerla (flag HttpOnly).
-  cookie_tok <- .parse_cookie_value(req$HTTP_COOKIE %||% "", "puga_auth")
-
-  # HEAD dinámico: si hay cookie válida, inyecta script de auto-login
   dynamic_head <- tags$head(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+    tags$meta(name = "referrer", content = "no-referrer"),
     tags$script(src = paste0("script.js?v=", .asset_ver("script.js"))),
-    tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", .asset_ver("styles.css"))),
-    if (nzchar(cookie_tok)) {
-      # Inyectar token en el HTML para que Shiny lo reciba en shiny:connected
-      # El token es solo caracteres hex (ya sanitizado arriba)
-      tags$script(HTML(sprintf(
-        '$(document).on("shiny:connected", function() {
-           Shiny.setInputValue("cookie_auth", "%s", {priority: "event"});
-         });',
-        cookie_tok
-      )))
-    }
+    tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", .asset_ver("styles.css")))
   )
 
   fluidPage(theme = my_theme, useShinyjs(), dynamic_head, uiOutput("root_ui"))
@@ -965,25 +925,28 @@ server <- function(input, output, session) {
   session$userData$session_token <- reactiveVal(NULL)
 
 
-  # Sesión desde cookie
-  observeEvent(input$cookie_auth,
-    {
-      has_tok <- !is.null(input$cookie_auth) && nzchar(input$cookie_auth)
-      if (is.null(session$userData$current_user()) && has_tok) {
-        u <- db_find_user_by_token(input$cookie_auth)
-        if (!is.null(u)) {
-          # Lazy check/generate referral code on token lookup
-          # [MANUAL] Deshabilitado autogeneración al login. Solo por botón manual.
-          # db_ensure_referral_code(u$id[[1]])
-          u <- db_get_user_by_id(u$id[[1]]) # refresh
-          session$userData$current_user(u)
-          session$userData$session_token(input$cookie_auth)
-        }
-      }
-    },
-    ignoreInit = FALSE,
-    once = TRUE
-  )
+  # Cookie disponible únicamente en el contexto HTTP de servidor.
+  initial_tok <- .parse_cookie_value(session$request$HTTP_COOKIE %||% "", "puga_auth")
+  if (nzchar(initial_tok)) {
+    u <- tryCatch(db_find_user_by_token(initial_tok), error=function(e) NULL)
+    if (!is.null(u)) {
+      session$userData$current_user(u)
+      session$userData$session_token(initial_tok)
+    }
+  }
+  # Revocaciones y renovaciones se reflejan en conexiones ya abiertas.
+  observe({
+    invalidateLater(15000, session)
+    tok <- isolate(session$userData$session_token())
+    if (is.null(tok)) return()
+    fresh <- db_current_session_user(session)
+    old <- isolate(session$userData$current_user())
+    if (!identical(fresh,old)) session$userData$current_user(fresh)
+    if (is.null(fresh)) {
+      session$userData$session_token(NULL)
+      session$sendCustomMessage("clearSessionCookie",list())
+    }
+  })
 
   # (Parche 2) Retorno de Stripe adaptado para Webhooks
   observe({
@@ -1003,7 +966,7 @@ server <- function(input, output, session) {
           if (isTRUE(u2$membership_active[[1]])) {
             showNotification("¡Pago completado! Tu cuenta está activada.", type = "message", duration = 6)
           } else {
-            showNotification("¡Gracias por tu pago! Tu membresía se activará en breve en cuanto recibamos validación de Stripe.", type = "warning", duration = 10)
+            showNotification("Estamos verificando el estado de tu membresía con Stripe. La pantalla se actualizará automáticamente.", type = "warning", duration = 10)
           }
         }
       }
@@ -1032,43 +995,43 @@ server <- function(input, output, session) {
   }
 
   auth_module("auth", set_view = set_view, on_success = on_success)
-  user_reactive <- reactive({
-    session$userData$current_user()
-  })
+  user_reactive <- function() {
+    session$userData$current_user() # establece dependencia reactiva
+    db_current_session_user(session) # datos actuales antes de cada acción
+  }
   main_module("main", user_reactive = user_reactive, on_logout = function() {
     session$userData$current_user(NULL)
   })
 
-  # Idle Handling
-  observeEvent(input$idle_warning, {
-    req(session$userData$current_user())
-    showModal(modalDialog(
-      title = "Sesión inactiva",
-      "Tu sesión está a punto de expirar por inactividad. ¿Deseas continuar?",
-      footer = tagList(
-        actionButton("mb_keep_alive", "Continuar sesión", class = "btn btn-primary"),
-        modalButton("Cerrar")
-      ),
-      easyClose = FALSE
-    ))
+  last_activity <- reactiveVal(Sys.time())
+  idle_warned <- reactiveVal(FALSE)
+  observeEvent(input$puga_activity, {
+    if (!is.null(session$userData$current_user())) {
+      last_activity(Sys.time())
+      if (isTRUE(idle_warned())) removeModal()
+      idle_warned(FALSE)
+    }
   })
-
   observeEvent(input$mb_keep_alive, {
+    last_activity(Sys.time())
+    idle_warned(FALSE)
     removeModal()
-    session$sendCustomMessage("reset_idle", TRUE)
   })
-
-  observeEvent(input$idle_timeout, {
-    req(session$userData$current_user())
-    removeModal()
-    # 1. Invalidar token en DB
-    tok <- session$userData$session_token()
-    if (!is.null(tok) && nzchar(tok)) try(db_delete_token(tok), silent = TRUE)
-    session$userData$current_user(NULL)
-    session$userData$session_token(NULL)
-    # 2. Borrar cookie HttpOnly via endpoint server-side (igual que logout manual)
-    session$sendCustomMessage("clearSessionCookie", list())
-    showNotification("Sesión cerrada por inactividad.", type = "warning", duration = 10)
+  observe({
+    invalidateLater(15000,session)
+    if (is.null(isolate(session$userData$current_user()))) return()
+    idle <- as.numeric(difftime(Sys.time(),isolate(last_activity()),units="secs"))
+    if (idle >= 1800) {
+      tok <- isolate(session$userData$session_token())
+      if (!is.null(tok)) try(db_delete_token(tok),silent=TRUE)
+      session$userData$current_user(NULL)
+      session$userData$session_token(NULL)
+      session$sendCustomMessage("clearSessionCookie",list())
+    } else if(idle>=1500 && !isTRUE(isolate(idle_warned()))) {
+      idle_warned(TRUE)
+      showModal(modalDialog(title="Sesión inactiva", "Tu sesión terminará en 5 minutos.",
+        footer=actionButton("mb_keep_alive","Continuar sesión"),easyClose=FALSE))
+    }
   })
 
   # Limpieza periódica de sesiones y tokens expirados (cada hora, solo en una sesión)
@@ -1078,18 +1041,25 @@ server <- function(input, output, session) {
       if ((as.numeric(Sys.time()) - last_cleanup) > 3600) {
         options(pugax_last_cleanup = as.numeric(Sys.time()))
         try(db_cleanup_expired_sessions(), silent = TRUE)
+        try(.with_conn(DBI::dbExecute(con,"DELETE FROM login_handoffs WHERE expires_at<now()")),silent=TRUE)
         try(db_cleanup_expired_reset_tokens(), silent = TRUE)
         try(db_cleanup_login_attempts(days = 1L), silent = TRUE)
       }
     }, error = function(e) NULL)
   }, once = TRUE)
 
-  # Cierre seguro del pool al apagar la app
-  onStop(function() {
-    if (exists("pool_close", mode = "function")) {
-      try(pool_close(), silent = TRUE)
-    }
-  })
-}
+ }
 
-shinyApp(ui, server)
+# Recurso de aplicación: una sesión que termina no debe cerrar el pool compartido.
+shiny::onStop(function() pool_close(), session = NULL)
+
+source("R/http_routes.R", encoding="UTF-8")
+puga_app <- shinyApp(ui, server)
+puga_app$httpHandler <- puga_http_handler(puga_app$httpHandler, shiny::parseQueryString,
+  .handle_set_session, .handle_logout_cookie, handle_stripe_webhook,
+  readiness=function(req) tryCatch({
+    ready <- .with_conn(DBI::dbGetQuery(con,"SELECT 1 FROM schema_migrations WHERE version='001_commercial_security.sql'"))
+    if(nrow(ready)!=1L) stop("Migration not applied")
+    .auth_response(200,"ok")
+  },error=function(e) .auth_response(503,"not ready")))
+puga_app

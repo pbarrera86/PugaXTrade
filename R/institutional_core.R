@@ -16,9 +16,7 @@ suppressWarnings({
   library(furrr)
 })
 
-`%||%` <- function(a, b) {
-  if (is.null(a) || length(a) == 0 || (is.character(a) && !nzchar(a[1]))) b else a
-}
+# Shared %||% comes from helpers.R (or db.R in background workers).
 
 # =========================================================
 # 1) CONFIGURACIÓN GENERAL
@@ -2102,7 +2100,8 @@ calculate_correlation <- function(history_list) {
   cor_mat
 }
 
-run_backtest <- function(history_df) {
+run_backtest <- function(history_df, cost_bps = 10) {
+  stopifnot(length(cost_bps)==1L, is.finite(cost_bps), cost_bps>=0, cost_bps<10000)
   if (is.null(history_df) || nrow(history_df) < 50) {
     return(tibble(
       Estrategia = c("Buy & Hold", "Sistema Semáforo (RSI)"),
@@ -2124,12 +2123,14 @@ run_backtest <- function(history_df) {
     tidyr::fill(Senal, .direction = "down") %>%
     mutate(
       Senal = tidyr::replace_na(Senal, 0),
-      Retorno_Estrategia = Senal * Retorno_Diario
+      Posicion = dplyr::lag(Senal, default = 0),
+      Rotacion = abs(Posicion - dplyr::lag(Posicion, default = 0)),
+      Retorno_Estrategia = Posicion * Retorno_Diario - Rotacion * cost_bps / 10000
     ) %>%
     tidyr::drop_na(Retorno_Diario)
 
-  bnh_cum <- exp(cumsum(log(1 + hist$Retorno_Diario)))
-  sys_cum <- exp(cumsum(log(1 + hist$Retorno_Estrategia)))
+  bnh_cum <- c(1, (1-cost_bps/10000) * cumprod(1 + hist$Retorno_Diario))
+  sys_cum <- c(1, cumprod(1 + hist$Retorno_Estrategia))
 
   bnh_ret <- (tail(bnh_cum, 1) - 1) * 100
   sys_ret <- (tail(sys_cum, 1) - 1) * 100

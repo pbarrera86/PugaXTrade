@@ -15,7 +15,23 @@ tryCatch({
     }
   }
 
-  cat("Schema OK. Ejecutando migracion de datos...\n")
+  DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())")
+  for (path in sort(list.files("migrations", pattern="[.]sql$", full.names=TRUE))) {
+    version <- basename(path)
+    done <- DBI::dbGetQuery(con,"SELECT 1 FROM schema_migrations WHERE version=$1",params=list(version))
+    if (nrow(done)) next
+    DBI::dbWithTransaction(con, {
+      # Serializa arranques simultáneos.
+      DBI::dbGetQuery(con,"SELECT pg_advisory_xact_lock(7412830)")
+      done <- DBI::dbGetQuery(con,"SELECT 1 FROM schema_migrations WHERE version=$1",params=list(version))
+      if (!nrow(done)) {
+        text <- paste(readLines(path,warn=FALSE),collapse="\n")
+        for (stmt in strsplit(text,";",fixed=TRUE)[[1]]) if(nzchar(trimws(stmt))) DBI::dbExecute(con,stmt)
+        DBI::dbExecute(con,"INSERT INTO schema_migrations(version) VALUES($1)",params=list(version))
+      }
+    })
+  }
+  cat("Schema y migraciones OK.\n")
 
   null_refs <- DBI::dbGetQuery(
     con,
@@ -54,7 +70,7 @@ tryCatch({
   cat("Migracion de datos completada.\n")
 
 }, error = function(e) {
-  cat("Error en db_init/migracion:", conditionMessage(e), "\n")
+  stop("Error en db_init/migracion: ", conditionMessage(e))
 }, finally = {
   if (!is.null(con)) {
     tryCatch(

@@ -1,0 +1,102 @@
+# Isolated disposable DB only. Never use production credentials here.
+stopifnot(identical(Sys.getenv("PUGA_TEST_DATABASE"),"local-disposable"))
+test_driver <- Sys.getenv("PUGA_TEST_DRIVER","RPostgreSQL")
+library(test_driver,character.only=TRUE)
+library(sodium)
+source("R/helpers.R")
+source("R/security.R")
+source("R/billing.R")
+con <- DBI::dbConnect(if(test_driver=="RPostgres") RPostgres::Postgres() else RPostgreSQL::PostgreSQL(),host="127.0.0.1",port=55432,dbname="postgres",user="agent")
+for(e in parse("R/db.R")) {
+  if(is.call(e) && identical(e[[1]],as.name("<-")) && is.symbol(e[[2]]) && is.call(e[[3]]) && identical(e[[3]][[1]],as.name("function"))) eval(e)
+}
+.with_conn <- function(expr) {
+  env <- new.env(parent=parent.frame());env$con <- con
+  eval(substitute(expr),env)
+}
+check <- function(value,name) {stopifnot(isTRUE(value));cat("PASS:",name,"\n")}
+query <- function(sql,...) DBI::dbGetQuery(con,sql,params=list(...))
+uid <- "00000000-0000-0000-0000-000000000001"
+ref <- "00000000-0000-0000-0000-000000000002"
+DBI::dbExecute(con,"INSERT INTO users(id,username,email,active,email_verified,referred_by) VALUES($1,'fixture','fixture@example.invalid',true,true,$2)",params=list(uid,ref))
+DBI::dbExecute(con,"INSERT INTO users(id,username,email,active,email_verified) VALUES($1,'referrer','referrer@example.invalid',true,true)",params=list(ref))
+check(nrow(db_find_user_by_token(paste(rep("a",128),collapse="")))==1L,"migration preserves existing cookie sessions")
+check(db_reset_token_valid(paste(rep("b",96),collapse="")),"migration preserves existing reset links")
+.app_base_url <- function() "https://fixture.example.invalid"
+DBI::dbExecute(con,"UPDATE users SET email_verified=false WHERE id=$1",params=list(uid))
+db_resend_verification("fixture")
+check(query("SELECT count(*) AS n FROM email_outbox")$n[[1]]==1L,"verification resend queued once")
+body <- query("SELECT body FROM email_outbox LIMIT 1")$body[[1]]
+vtoken <- sub(".*verify=","",body)
+check(db_verify_email(vtoken),"resent verification token accepted")
+t <- db_issue_session_token(uid)
+check(nrow(db_find_user_by_token(t))==1L,"issued session accepted")
+check(query("SELECT token FROM sessions WHERE user_id=$1",uid)$token[[1]]!=t,"session stored as hash")
+DBI::dbExecute(con,"UPDATE users SET active=false WHERE id=$1",params=list(uid))
+check(is.null(db_find_user_by_token(t)),"disabled account denied")
+DBI::dbExecute(con,"UPDATE users SET active=true WHERE id=$1",params=list(uid))
+handoff <- db_create_login_handoff(uid)
+fresh <- db_redeem_login_handoff(handoff)
+check(is.character(fresh) && nchar(fresh)==128L,"handoff issues session")
+check(is.null(db_redeem_login_handoff(handoff)),"handoff single use")
+check(is.null(db_find_user_by_token(t)),"new login revokes previous session")
+reset <- db_create_reset_token(uid)
+check(db_reset_token_valid(reset),"reset token valid")
+check(db_reset_password_with_token(reset,"fixture secure password"),"password reset succeeds")
+check(!db_reset_password_with_token(reset,"another fixture password"),"reset token cannot be reused")
+check(is.null(db_find_user_by_token(fresh)),"password reset revokes sessions")
+t <- db_issue_session_token(uid)
+db_set_password("fixture","second secure password")
+check(is.null(db_find_user_by_token(t)),"password change revokes sessions")
+
+Sys.setenv(STRIPE_SECRET_KEY="sk_test_fixture",STRIPE_PRICE_ID="price_fixture",REFERRAL_COMMISSION_AMOUNT="9.00")
+subscription <- list(id="sub_fixture",customer="cus_fixture",status="active",latest_invoice=list(status="paid"),metadata=list(user_id=uid),
+  cancel_at_period_end=FALSE,items=list(data=list(list(price=list(id="price_fixture"),current_period_end=as.numeric(Sys.time())+86400))))
+stripe_fetch_subscription <- function(id) subscription
+event <- list(id="evt_fixture",type="checkout.session.completed",livemode=FALSE,
+  data=list(object=list(id="cs_fixture",subscription="sub_fixture",payment_status="paid",amount_total=2999,client_reference_id=uid)))
+check(process_stripe_event(event),"checkout processed")
+check(!process_stripe_event(event),"duplicate event ignored")
+check(query("SELECT membership_active FROM users WHERE id=$1",uid)$membership_active[[1]],"paid access active")
+check(query("SELECT referral_wallet FROM users WHERE id=$1",ref)$referral_wallet[[1]]==9,"commission credited once")
+event$id <- "evt_failure";event$type <- "invoice.payment_failed"
+subscription$status <- "past_due"
+process_stripe_event(event)
+check(!query("SELECT membership_active FROM users WHERE id=$1",uid)$membership_active[[1]],"failed subscription suspended")
+event$id <- "evt_recovery";event$type <- "invoice.paid";event$data$object$amount_paid <- 2999
+subscription$status <- "active"
+process_stripe_event(event)
+check(query("SELECT membership_active FROM users WHERE id=$1",uid)$membership_active[[1]],"recovered subscription restored")
+check(query("SELECT referral_wallet FROM users WHERE id=$1",ref)$referral_wallet[[1]]==9,"recovery cannot pay second commission")
+event$id <- "evt_retry"
+stripe_fetch_subscription <- function(id) stop("simulated network failure")
+try(process_stripe_event(event),silent=TRUE)
+check(nrow(query("SELECT event_id FROM stripe_events WHERE event_id=$1",event$id))==0L,"failed event rolled back for retry")
+# Old subscription event must not disable the current subscription.
+stripe_fetch_subscription <- function(id) {
+  x <- subscription
+  if(id=="sub_old") {x$id <- id;x$status <- "canceled"}
+  x
+}
+event$id <- "evt_old"; event$type <- "customer.subscription.deleted";event$data$object$id <- "sub_old"
+process_stripe_event(event)
+check(query("SELECT membership_active FROM users WHERE id=$1",uid)$membership_active[[1]],"old subscription cannot revoke current access")
+if(.Platform$OS.type=="unix") {
+  handoff <- db_create_login_handoff(uid)
+  connect <- function() DBI::dbConnect(if(test_driver=="RPostgres") RPostgres::Postgres() else RPostgreSQL::PostgreSQL(),host="127.0.0.1",port=55432,dbname="postgres",user="agent")
+  results <- parallel::mclapply(1:2,function(i) {
+    con <<- connect()
+    on.exit(DBI::dbDisconnect(con))
+    !is.null(db_redeem_login_handoff(handoff))
+  },mc.cores=2)
+  check(sum(unlist(results))==1L,"concurrent handoff redeemed exactly once")
+  reset <- db_create_reset_token(uid)
+  results <- parallel::mclapply(1:2,function(i) {
+    con <<- connect()
+    on.exit(DBI::dbDisconnect(con))
+    db_reset_password_with_token(reset,paste0("fixture password ",i))
+  },mc.cores=2)
+  check(sum(unlist(results))==1L,"concurrent reset succeeds exactly once")
+}
+DBI::dbDisconnect(con)
+cat("DATABASE SUITE OK\n")
