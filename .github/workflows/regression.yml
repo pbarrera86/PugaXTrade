@@ -58,6 +58,11 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - name: Validate isolated staging configuration
+        env:
+          STAGING_DB_PASSWORD: disposable-ci-only
+          STAGING_PUBLIC_BASE_URL: https://fixture.example.invalid
+        run: docker compose -f compose.staging.yml config --quiet
       - name: Build production image
         run: docker build --tag pugaxtrade:ci .
       - name: Start application with disposable database
