@@ -1055,6 +1055,12 @@ shiny::onStop(function() pool_close(), session = NULL)
 
 source("R/http_routes.R", encoding="UTF-8")
 puga_app <- shinyApp(ui, server)
+# httpuv serves www/ before R handlers and rejects POST on static paths.
+# Route these prefixes dynamically so signed webhooks and auth POSTs reach R.
+puga_app$staticPaths <- c(puga_app$staticPaths, list(
+  webhook = httpuv::excludeStaticPath(),
+  auth = httpuv::excludeStaticPath()
+))
 puga_app$httpHandler <- puga_http_handler(puga_app$httpHandler, shiny::parseQueryString,
   .handle_set_session, .handle_logout_cookie, handle_stripe_webhook,
   readiness=function(req) tryCatch({
