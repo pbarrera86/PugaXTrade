@@ -15,7 +15,10 @@ for(e in parse("R/db.R")) {
   eval(substitute(expr),env)
 }
 check <- function(value,name) {stopifnot(isTRUE(value));cat("PASS:",name,"\n")}
-query <- function(sql,...) DBI::dbGetQuery(con,sql,params=list(...))
+query <- function(sql,...) {
+  params <- list(...)
+  if (length(params)) DBI::dbGetQuery(con,sql,params=params) else DBI::dbGetQuery(con,sql)
+}
 uid <- "00000000-0000-0000-0000-000000000001"
 ref <- "00000000-0000-0000-0000-000000000002"
 DBI::dbExecute(con,"INSERT INTO users(id,username,email,active,email_verified,referred_by) VALUES($1,'fixture','fixture@example.invalid',true,true,$2)",params=list(uid,ref))
