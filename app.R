@@ -139,7 +139,7 @@ my_theme <- bs_theme(
 # Endpoint: /auth/set-session — establece la cookie HttpOnly y redirige al app
 .auth_response <- function(status, body, headers = list()) {
   shiny::httpResponse(status, "text/plain", body,
-    c(list("Cache-Control"="no-store", "Referrer-Policy"="no-referrer", "X-Content-Type-Options"="nosniff"),headers))
+    c(list("Cache-Control"="no-store", "Referrer-Policy"="strict-origin", "X-Content-Type-Options"="nosniff"),headers))
 }
 .auth_origin_ok <- function(req) {
   identical(req$REQUEST_METHOD, "POST") && identical(req$HTTP_ORIGIN, sub("/+$", "", PUBLIC_BASE_URL))
@@ -904,7 +904,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
 ui <- function(req) {
   dynamic_head <- tags$head(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
-    tags$meta(name = "referrer", content = "no-referrer"),
+    tags$meta(name = "referrer", content = "strict-origin"),
     tags$script(src = paste0("script.js?v=", .asset_ver("script.js"))),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", .asset_ver("styles.css")))
   )

@@ -72,7 +72,7 @@ jobs:
           docker run -d --name puga-ci --network host \
             -e PGHOST=127.0.0.1 -e PGPORT=55432 -e PGDATABASE=postgres \
             -e PGUSER=agent -e PGPASSWORD=disposable-ci-only -e PGSSLMODE=disable \
-            -e PUBLIC_BASE_URL=https://fixture.example.invalid -e STRIPE_WEBHOOK_SECRET=whsec_ci_only pugaxtrade:ci
+            -e PUBLIC_BASE_URL=http://localhost:3838 -e STRIPE_WEBHOOK_SECRET=whsec_ci_only pugaxtrade:ci
       - name: Verify application and migrated database
         run: |
           for attempt in $(seq 1 90); do
@@ -98,6 +98,14 @@ jobs:
           status=$(curl -sS -o /tmp/puga-auth -w '%{http_code}' http://localhost:3838/auth/set-session --data 'code=invalid')
           echo "Missing auth origin HTTP $status"
           test "$status" = 403
+      - name: Install browser test runtime
+        run: |
+          npm install --prefix /tmp/puga-browser --no-package-lock playwright
+          /tmp/puga-browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Verify browser form origin and auth responses
+        env:
+          NODE_PATH: /tmp/puga-browser/node_modules
+        run: node tests/browser_auth_flow.cjs
       - name: Container diagnostics
         if: always()
         run: |

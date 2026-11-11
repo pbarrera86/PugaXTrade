@@ -10,7 +10,7 @@ puga_http_handler <- function(ui_handler, parse_query, set_session, logout, webh
       if(identical(path,"/auth/logout") || identical(q$action,"logout")) logout(req) else ui_handler(req)
     if (!is.null(response)) {
       response$headers$`Cache-Control` <- "no-store"
-      response$headers$`Referrer-Policy` <- "no-referrer"
+      response$headers$`Referrer-Policy` <- "strict-origin"
       response$headers$`X-Content-Type-Options` <- "nosniff"
       response$headers$`X-Frame-Options` <- "SAMEORIGIN"
       response$headers$`Content-Security-Policy` <- "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
