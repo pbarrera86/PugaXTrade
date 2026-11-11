@@ -1,6 +1,6 @@
 # Correcciones comerciales preparadas
 
-Estado: código local en `fix/commercial-readiness`. **Todavía no publicado ni desplegado.**
+Estado: rama `fix/commercial-readiness` publicada y PR #17 en borrador. **Todavía no desplegado en producción.**
 Base: `785781db8c2aacdd6ba009549da548d4de71db67`.
 
 ## Cambios por orden de complejidad
@@ -28,7 +28,7 @@ Base: `785781db8c2aacdd6ba009549da548d4de71db67`.
 - Reentrega de evento, recuperación de pago, comisión única y rollback para reintento.
 - Evento de suscripción antigua sin revocación de la actual.
 
-Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el driver RPostgreSQL disponible localmente. CI está preparado para repetirlas con RPostgres, que es el driver de producción. No se probaron pagos reales, SMTP real ni navegación completa de esta versión en Shiny. El build completo de Docker y las pruebas de staging siguen pendientes.
+Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el driver RPostgreSQL disponible localmente. CI repite las pruebas con RPostgres, que es el driver de producción, y añade un build Docker con arranque y healthcheck contra PostgreSQL desechable. No se probaron pagos reales, SMTP real ni navegación completa de esta versión en Shiny. El build completo de Docker y las pruebas de staging siguen pendientes.
 
 ## Despliegue y reversión
 
@@ -44,7 +44,7 @@ Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el dri
 
 ## Pendientes antes de aprobar comercialización
 
-- Publicación de rama/PR y validación CI con el driver de producción; build y staging completos.
+- Rama publicada y PR #17 creado; pendientes resultados CI con el driver de producción, build y staging completos.
 - Rol de aplicación con mínimos privilegios, separado del propietario/migrador. No se cambió el rol real ni se generaron credenciales.
 - Backups/PITR y retención de Neon confirmados, con restauración ensayada; destino S3 de Dokploy si se usará ese mecanismo.
 - Validación de entrega del reenvío de verificación, limitación por IP y observabilidad de intentos/colas. Los límites por identificador no reemplazan protección global contra abuso.

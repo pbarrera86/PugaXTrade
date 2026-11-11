@@ -35,3 +35,48 @@ jobs:
           PUGA_TEST_DATABASE: local-disposable
           PUGA_TEST_DRIVER: RPostgres
         run: Rscript tests/database.R
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: agent
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U agent"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build --tag pugaxtrade:ci .
+      - name: Start application with disposable database
+        run: |
+          docker run -d --name puga-ci --network host \
+            -e PGHOST=127.0.0.1 -e PGPORT=55432 -e PGDATABASE=postgres \
+            -e PGUSER=agent -e PGPASSWORD=disposable-ci-only -e PGSSLMODE=disable \
+            -e PUBLIC_BASE_URL=https://fixture.example.invalid pugaxtrade:ci
+      - name: Verify application and migrated database
+        run: |
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://localhost:3838/healthz > /tmp/puga-health; then
+              curl -fsS http://localhost:3838/ > /tmp/puga-page
+              grep -qi 'shiny' /tmp/puga-page
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Container diagnostics
+        if: always()
+        run: |
+          docker logs puga-ci 2>&1 || true
+          docker exec puga-ci sh -c 'cat /var/log/shiny-server/*.log' 2>&1 || true
+      - name: Remove test container
+        if: always()
+        run: docker rm -f puga-ci || true
