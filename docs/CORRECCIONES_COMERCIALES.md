@@ -28,7 +28,17 @@ Base: `785781db8c2aacdd6ba009549da548d4de71db67`.
 - Reentrega de evento, recuperación de pago, comisión única y rollback para reintento.
 - Evento de suscripción antigua sin revocación de la actual.
 
-Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el driver RPostgreSQL disponible localmente. CI repite las pruebas con RPostgres, que es el driver de producción, y añade un build Docker con arranque y healthcheck contra PostgreSQL desechable. CI aprobó el driver RPostgres, el build completo y el arranque de la imagen Docker (run 43112613822). Chromium comprobó que el formulario conserva Origin, rechaza un código de acceso inválido con 401 y vuelve al inicio tras logout. En staging se comprobó aceptación SMTP y vaciado del cuerpo enviado en la cola; Stripe test respondió a la consulta de precio y el webhook aceptó firma válida y rechazó firma inválida. Estas comprobaciones no equivalen a un pago Checkout completo ni a una aceptación funcional completa. La prueba ampliada detectó que Shiny Server OSS no entrega la cookie a la conexión SockJS y que un manejador JavaScript sin argumento interrumpía su registro. Se añadió recuperación HTTP vinculada a cada sesión, con Origin verificado y sin devolver tokens, y se corrigió el manejador. El 12 de noviembre se desplegó en staging y se observó la cuenta de prueba del operador autenticada al recargar por HTTPS. El CI completo de contraseña, cookie, recarga y logout se está terminando.
+Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el driver RPostgreSQL disponible localmente. CI repite las pruebas con RPostgres, que es el driver de producción, y añade un build Docker con arranque y healthcheck contra PostgreSQL desechable. CI aprobó el driver RPostgres, el build completo y el arranque de la imagen Docker (run 43112613822). Chromium comprobó que el formulario conserva Origin, rechaza un código de acceso inválido con 401 y vuelve al inicio tras logout. En staging se comprobó aceptación SMTP y vaciado del cuerpo enviado en la cola; Stripe test respondió a la consulta de precio y el webhook aceptó firma válida y rechazó firma inválida. Estas comprobaciones no equivalen a un pago Checkout completo ni a una aceptación funcional completa. La prueba ampliada detectó que Shiny Server OSS no entrega la cookie a la conexión SockJS y que un manejador JavaScript sin argumento interrumpía su registro. Se añadió recuperación HTTP vinculada a cada sesión, con Origin verificado y sin devolver tokens, y se corrigió el manejador. El 12 de noviembre se desplegó en staging y se observó la cuenta de prueba del operador autenticada al recargar por HTTPS. El CI completo de contraseña, cookie, recarga y logout aprobó junto con la regresión R/SQL en el run 43250844349.
+
+## Validación funcional adicional
+
+- Respaldo lógico y restauración aislada comprobados. La comparación de tablas no detectó cambios en la cantidad de filas.
+- Ensayo de migración sobre la copia restaurada completado, conservando los registros y convirtiendo las sesiones al formato protegido.
+- Checkout en modo test completado: membresía activa. Cancelar renovación conserva el acceso del periodo pagado; reactivarla vuelve a habilitar la renovación.
+- La reentrega firmada de un evento de prueba ya procesado respondió correctamente sin duplicar efectos.
+- Revisar la configuración de correo antes del despliegue.
+- El puerto directo del host se limita a loopback; el proxy conserva el acceso por la red de servicio.
+- Las evidencias operativas detalladas se conservan fuera del repositorio. La comprobación puntual no sustituye una política periódica de respaldo, retención y recuperación.
 
 ## Despliegue y reversión
 
@@ -44,7 +54,7 @@ Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el dri
 
 ## Pendientes antes de aprobar comercialización
 
-- Rama publicada y PR #17 creado; driver de producción y build aprobados. Pendientes aceptación funcional completa de staging y respaldo/restauración antes del despliegue de producción.
+- Rama publicada y PR #17 creado; driver de producción y build aprobados. Respaldo, restauración, ensayo de migración y Checkout aprobado comprobados. Pendientes revisión final de configuración y aceptación funcional restante antes del despliegue de producción.
 - Rol de aplicación con mínimos privilegios, separado del propietario/migrador. No se cambió el rol real ni se generaron credenciales.
 - Backups/PITR y retención de Neon confirmados, con restauración ensayada; destino S3 de Dokploy si se usará ese mecanismo.
 - Validación de entrega del reenvío de verificación, limitación por IP y observabilidad de intentos/colas. Los límites por identificador no reemplazan protección global contra abuso.

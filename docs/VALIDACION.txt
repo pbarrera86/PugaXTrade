@@ -56,5 +56,7 @@ También aprobados: bash -n, node --check, YAML compose y git diff --check (CRLF
 Actualización 2026-11-12: CI 43112613822 aprobó regresión con RPostgres, imagen Docker completa, arranque/migración y Chromium para Origin y rutas de autenticación.
 Staging: aceptación SMTP y limpieza del cuerpo de cola comprobadas; precio Stripe test consultado; webhook firmado 200 y firma inválida 401.
 Prueba completa de contraseña/cookie/recarga/logout añadida. Detectó y motivó corregir la recuperación de cookie en SockJS y el registro de un manejador JavaScript.
-Staging HTTPS 2026-11-12: sesión del operador recuperada al recargar; panel autenticado y Mi cuenta visibles. CI completo todavía pendiente.
-Pendientes: Checkout test completo, aceptación funcional restante y respaldo/restauración de Neon antes de producción.
+Staging HTTPS 2026-11-12: sesión del operador recuperada al recargar; panel autenticado y Mi cuenta visibles. CI completo aprobado: https://github.com/pbarrera86/PugaXTrade/actions/runs/43250844349.
+Validación adicional: respaldo y restauración aislada comprobados; cantidades de filas iguales; ensayo de migración correcto, conservando los registros y las sesiones protegidas.
+Checkout test aprobado; cancelación y reactivación de renovación comprobadas. Reentrega de evento firmado aceptada sin duplicar efectos.
+Pendientes: configuración final, aceptación funcional restante, pago fallido/recuperación en el despliegue y política periódica de respaldo. La prueba unitaria de fallo/recuperación está aprobada; no se confunde con una prueba end-to-end en Stripe.
