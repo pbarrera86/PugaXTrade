@@ -5,6 +5,13 @@ const assert = require('node:assert/strict');
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
+    page.on('response', async response => {
+      if (response.url().includes('/dataobj/restore-auth')) {
+        const headers = await response.request().allHeaders();
+        console.log('Session restoration:', { status: response.status(), cookiePresent: (headers.cookie || '').includes('puga_auth='), origin: headers.origin });
+      }
+    });
+    page.on('pageerror', error => console.log('Browser error:', error.message));
     let response = await page.goto('http://localhost:3838/');
     assert.equal(response.headers()['referrer-policy'], 'strict-origin');
     await page.waitForFunction(() => typeof window.pugaAuthPost === 'function');
@@ -29,7 +36,7 @@ const assert = require('node:assert/strict');
       page.getByRole('button', { name: 'Entrar', exact: true }).click(),
     ]);
     const signedIn = page.getByRole('button', { name: 'Cerrar sesión', exact: true });
-    await signedIn.waitFor({ state: 'visible', timeout: 30000 });
+    await signedIn.waitFor({ state: 'visible', timeout: 30000 }).catch(async error => { console.log('Login page state:', (await page.textContent('body')).slice(0, 1200)); throw error; });
     const cookie = (await page.context().cookies()).find(item => item.name === 'puga_auth');
     assert.ok(cookie, 'successful password login must create the session cookie');
     assert.equal(cookie.httpOnly, true);
