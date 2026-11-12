@@ -21,7 +21,30 @@ const assert = require('node:assert/strict');
     assert.equal(page.url(), 'http://localhost:3838/');
     await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     assert.match(await page.textContent('body'), /Iniciar sesi/);
-    console.log('PASS: browser form origin preserved; login reaches validation; logout redirects');
+    await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).click();
+    await page.getByLabel('Usuario o correo', { exact: true }).fill('ci_browser_fixture');
+    await page.getByLabel('Contraseña', { exact: true }).fill('Browser fixture password 2026');
+    await Promise.all([
+      page.waitForNavigation(),
+      page.getByRole('button', { name: 'Entrar', exact: true }).click(),
+    ]);
+    const signedIn = page.getByRole('button', { name: 'Cerrar sesión', exact: true });
+    await signedIn.waitFor({ state: 'visible', timeout: 30000 });
+    const cookie = (await page.context().cookies()).find(item => item.name === 'puga_auth');
+    assert.ok(cookie, 'successful password login must create the session cookie');
+    assert.equal(cookie.httpOnly, true);
+    assert.equal(cookie.secure, true);
+    assert.equal(cookie.sameSite, 'Lax');
+    assert.equal(await page.evaluate(() => document.cookie.includes('puga_auth=')), false);
+    assert.equal(page.url(), 'http://localhost:3838/');
+    await page.reload();
+    await signedIn.waitFor({ state: 'visible', timeout: 30000 });
+    await Promise.all([page.waitForNavigation(), signedIn.click()]);
+    await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+    assert.equal((await page.context().cookies()).some(item => item.name === 'puga_auth'), false);
+    await page.reload();
+    await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+    console.log('PASS: browser login, HttpOnly cookie, reload persistence, logout, and origin validation');
   } finally {
     await browser.close();
   }

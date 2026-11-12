@@ -102,7 +102,9 @@ jobs:
         run: |
           npm install --prefix /tmp/puga-browser --no-package-lock playwright
           /tmp/puga-browser/node_modules/.bin/playwright install --with-deps chromium
-      - name: Verify browser form origin and auth responses
+      - name: Seed isolated browser login fixture
+        run: docker exec -e PUGA_TEST_DATABASE=local-disposable -w /srv/shiny-server/app puga-ci Rscript tests/browser_seed.R
+      - name: Verify complete browser login and logout
         env:
           NODE_PATH: /tmp/puga-browser/node_modules
         run: node tests/browser_auth_flow.cjs
