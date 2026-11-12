@@ -171,7 +171,7 @@ institutional_server <- function(id, user_reactive) {
     can_analyze <- function() db_can_analyze(user_reactive())
 
     # ---- Módulo: Screener de Extremos Locales (pestaña "Extremos Locales (QMin)") ----
-    extremos_server("ext", can_analyze = can_analyze)
+    extremos_server("ext", can_analyze = can_analyze, user_reactive = user_reactive)
 
     output$lock_banner_ui <- renderUI({
       u <- user_reactive()
@@ -325,6 +325,17 @@ institutional_server <- function(id, user_reactive) {
     }
     inst_use_mirai <- requireNamespace("mirai", quietly = TRUE)
     inst_current_job <- NULL # referencia al proceso mirai en curso (para cancelar)
+    inst_ticket <- NULL
+    inst_release <- function() {
+      try(puga_job_release(inst_ticket), silent=TRUE)
+      inst_ticket <<- NULL
+    }
+    session$onSessionEnded(function() {
+      if (!is.null(inst_current_job)) try(mirai::stop_mirai(inst_current_job), silent=TRUE)
+      inst_release()
+      if (!is.null(shiny::isolate(rv$prog_file))) unlink(shiny::isolate(rv$prog_file))
+      if (!is.null(shiny::isolate(rv$wb_path))) unlink(shiny::isolate(rv$wb_path))
+    })
 
     institutional_task <- tryCatch(
       shiny::ExtendedTask$new(function(ticks, perf, use_pg, prog_file) {
@@ -333,7 +344,7 @@ institutional_server <- function(id, user_reactive) {
           m <- mirai::mirai(
             job(app_dir, ticks, perf, use_pg, prog_file),
             job = inst_worker_job, app_dir = app_dir, ticks = ticks, perf = perf,
-            use_pg = use_pg, prog_file = prog_file
+            use_pg = use_pg, prog_file = prog_file, .timeout = puga_job_timeout_ms
           )
           inst_current_job <<- m
           promises::as.promise(m)
@@ -349,6 +360,7 @@ institutional_server <- function(id, user_reactive) {
 
     inst_finish_ok <- function(res) {
       rv$task_running <- FALSE
+      inst_release()
       if (is.null(res) || is.null(res$summary) || nrow(res$summary) == 0) {
         rv$status <- "error"
         rv$progress_msg <- "El análisis terminó sin resultados. Verifica que los tickers existan e intenta de nuevo."
@@ -380,8 +392,10 @@ institutional_server <- function(id, user_reactive) {
 
     inst_finish_error <- function(err) {
       rv$task_running <- FALSE
+      inst_release()
       rv$status <- "error"
-      rv$progress_msg <- paste("Ocurrió un error durante el análisis:", err)
+      message("[Analysis] Worker failed: ", err)
+      rv$progress_msg <- "No se pudo completar el análisis. Si alcanzó 20 minutos, reduce la lista de símbolos e intenta de nuevo."
       showNotification(rv$progress_msg, type = "error", duration = 10)
       inst_set_busy(FALSE)
     }
@@ -399,6 +413,15 @@ institutional_server <- function(id, user_reactive) {
         return()
       }
 
+      if (!inst_use_mirai || is.null(institutional_task)) {
+        showNotification("El servicio de análisis no está disponible. Intenta más tarde.", type="warning")
+        return()
+      }
+      inst_ticket <<- tryCatch(puga_job_acquire(user_reactive()$id[[1]]), error=function(e) NULL)
+      if (is.null(inst_ticket)) {
+        showNotification("Hay análisis en curso. Espera a que termine el tuyo o vuelve a intentar en unos minutos.", type="warning")
+        return()
+      }
       rv$prog_file <- tempfile("inst_prog_", fileext = ".txt")
       writeLines(sprintf("0|Iniciando análisis de %d tickers...", length(tickers)), rv$prog_file)
       rv$tickers_req <- tickers
@@ -422,15 +445,7 @@ institutional_server <- function(id, user_reactive) {
         if (ok) return()
       }
 
-      # Respaldo sincrónico (sin proceso en segundo plano)
-      showNotification("Análisis en modo secuencial (procesos en segundo plano no disponibles).", type = "warning", duration = 5)
-      tryCatch({
-        res <- withProgress(message = "Analizando...", value = 0, {
-          inst_run_pipeline(tickers, input$perfil, use_pg,
-            progress_cb = function(msg = "", pct = 0) setProgress(value = pct / 100, detail = msg))
-        })
-        inst_finish_ok(res)
-      }, error = function(e) inst_finish_error(conditionMessage(e)))
+      inst_finish_error("No fue posible iniciar el proceso. Intenta más tarde.")
     })
 
     observeEvent(input$cancel_btn, {
@@ -441,6 +456,7 @@ institutional_server <- function(id, user_reactive) {
       rv$progress <- 0
       rv$progress_msg <- "Análisis cancelado por el usuario."
       if (inst_use_mirai && !is.null(inst_current_job)) try(mirai::stop_mirai(inst_current_job), silent = TRUE)
+      inst_release()
       inst_set_busy(FALSE)
       showNotification("Análisis cancelado.", type = "warning")
     })

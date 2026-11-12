@@ -167,7 +167,7 @@ pg_pool <- function() {
     sslmode = Sys.getenv("PGSSLMODE", "require"),
     idleTimeout = 300,
     minSize = 1,
-    maxSize = 5
+    maxSize = 2
   )
 
   pg_pool_global
@@ -180,16 +180,7 @@ pg_cache_init <- function() {
   }
 
   p <- pg_pool()
-  DBI::dbExecute(
-    p,
-    "
-    CREATE TABLE IF NOT EXISTS ticker_cache (
-      ticker TEXT PRIMARY KEY,
-      fetched_at TIMESTAMPTZ NOT NULL,
-      payload JSONB NOT NULL
-    )
-    "
-  )
+  DBI::dbGetQuery(p, "SELECT ticker FROM ticker_cache LIMIT 0")
   pg_cache_initialized <<- TRUE
   invisible(TRUE)
 }

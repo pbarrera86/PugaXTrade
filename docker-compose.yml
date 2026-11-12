@@ -1,5 +1,20 @@
 # ── PugaX Trade — docker-compose.yml ─────────────────────────────────────────
 services:
+  migrate:
+    image: pugaxtrade:latest
+    restart: "no"
+    working_dir: /srv/shiny-server/app
+    command: ["Rscript", "db_init.R"]
+    environment:
+      PGHOST: ${PGHOST}
+      PGPORT: ${PGPORT}
+      PGDATABASE: ${PGDATABASE}
+      PGUSER: ${PG_MIGRATOR_USER:-${PGUSER}}
+      PGPASSWORD: ${PG_MIGRATOR_PASSWORD:-${PGPASSWORD}}
+      PGSSLMODE: ${PGSSLMODE}
+    networks: [dokploy-network]
+    healthcheck:
+      disable: true
   pugaxtrade:
     build:
       context: .
@@ -7,6 +22,9 @@ services:
     image: pugaxtrade:latest
     container_name: pugaxtrade_app
     restart: unless-stopped
+    mem_limit: 4g
+    cpus: 1.5
+    pids_limit: 256
 
     ports:
       - "127.0.0.1:3838:3838"
@@ -14,7 +32,11 @@ services:
     networks:
       - dokploy-network
 
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     environment: &app_environment
+      PUGA_RUN_MIGRATIONS: "false"
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
 
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
@@ -56,6 +78,9 @@ services:
     image: pugaxtrade:latest
     restart: unless-stopped
     init: true
+    mem_limit: 512m
+    cpus: 0.25
+    pids_limit: 64
     working_dir: /srv/shiny-server/app
     command: ["Rscript", "scripts/email_worker.R"]
     environment: *app_environment
@@ -63,7 +88,11 @@ services:
       pugaxtrade:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test: ["CMD-SHELL", "test -n \"$$(find /tmp/puga-email-worker-heartbeat -mmin -2 -print -quit 2>/dev/null)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - dokploy-network
 

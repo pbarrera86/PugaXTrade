@@ -111,3 +111,15 @@ input:focus {
 .dataTables_wrapper .dataTables_paginate {
     color: #ffffff !important;
 }
+
+/* Visible keyboard focus and compact controls on narrow screens. */
+:focus-visible { outline: 3px solid #facc15 !important; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+@media (max-width: 600px) {
+  .card.p-4 { padding: 1rem !important; }
+  .section, .account-card { min-width: 0; }
+  .dataTables_wrapper { max-width: 100%; overflow-x: auto; }
+  .shiny-notification { max-width: calc(100vw - 24px); }
+}

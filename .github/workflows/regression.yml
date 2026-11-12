@@ -36,7 +36,7 @@ jobs:
       - name: Check shell syntax
         run: bash -n entrypoint.sh
       - name: Prepare disposable test database
-        run: psql -h localhost -p 55432 -U agent -d postgres -v ON_ERROR_STOP=1 -f schema.sql -f tests/migration_seed.sql -f migrations/001_commercial_security.sql
+        run: psql -h localhost -p 55432 -U agent -d postgres -v ON_ERROR_STOP=1 -f schema.sql -f tests/migration_seed.sql -f migrations/001_commercial_security.sql -f migrations/002_analysis_capacity.sql
       - name: Run database regression
         env:
           PUGA_TEST_DATABASE: local-disposable

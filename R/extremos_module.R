@@ -120,7 +120,7 @@ extremos_ui <- function(id) {
   )
 }
 
-extremos_server <- function(id, can_analyze = reactive(TRUE)) {
+extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = reactive(NULL)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -197,6 +197,17 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
         }
       )
     }
+    ext_current_job <- NULL
+    ext_ticket <- NULL
+    ext_release <- function() {
+      try(puga_job_release(ext_ticket), silent=TRUE)
+      ext_ticket <<- NULL
+    }
+    session$onSessionEnded(function() {
+      if (!is.null(ext_current_job)) try(mirai::stop_mirai(ext_current_job), silent=TRUE)
+      if (!is.null(shiny::isolate(rv$prog_file))) unlink(shiny::isolate(rv$prog_file))
+      ext_release()
+    })
     use_mirai <- requireNamespace("mirai", quietly = TRUE)
     message("[EXT] Worker en segundo plano: ", if (use_mirai) "mirai (proceso propio)" else "future")
 
@@ -207,8 +218,9 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
           m <- mirai::mirai(
             job(app_dir, ticks, umbral, q_sel, min_caidas, cache_h, prog_file, modo),
             job = ext_worker_job, app_dir = app_dir, ticks = ticks, umbral = umbral,
-            q_sel = q_sel, min_caidas = min_caidas, cache_h = cache_h, prog_file = prog_file, modo = modo
+            q_sel = q_sel, min_caidas = min_caidas, cache_h = cache_h, prog_file = prog_file, modo = modo, .timeout = puga_job_timeout_ms
           )
+          ext_current_job <<- m
           promises::as.promise(m)
         } else {
           promises::future_promise(
@@ -239,6 +251,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
     finish_ok <- function(res) {
       rv$result <- res
       rv$running <- FALSE
+      ext_release()
       if (is.null(res) || is.null(res$todos) || nrow(res$todos) == 0) {
         rv$status <- "error"
         rv$msg <- if (!is.null(res) && length(res$fallidos)) {
@@ -266,8 +279,10 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
 
     finish_error <- function(err) {
       rv$running <- FALSE
+      ext_release()
       rv$status <- "error"
-      rv$msg <- paste("Ocurrió un error durante el proceso:", err)
+      message("[Extremes] Worker failed: ", err)
+      rv$msg <- "No se pudo completar la búsqueda. Si alcanzó 20 minutos, reduce la lista de símbolos e intenta de nuevo."
       showNotification(rv$msg, type = "error", duration = 10)
       set_busy(FALSE)
     }
@@ -285,6 +300,15 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
       }
       if (length(ticks) == 0) {
         showNotification("Ingresa al menos un ticker válido.", type = "warning")
+        return()
+      }
+      if (!use_mirai || is.null(ext_task)) {
+        showNotification("El servicio de análisis no está disponible. Intenta más tarde.", type="warning")
+        return()
+      }
+      ext_ticket <<- tryCatch(puga_job_acquire(user_reactive()$id[[1]]), error=function(e) NULL)
+      if (is.null(ext_ticket)) {
+        showNotification("Hay análisis en curso. Espera a que termine el tuyo o vuelve a intentar en unos minutos.", type="warning")
         return()
       }
       p <- params()
@@ -309,17 +333,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
         if (ok) return()
       }
 
-      # Fallback sincrónico (si no hay workers en segundo plano)
-      tryCatch({
-        res <- withProgress(message = "Analizando extremos locales...", value = 0, {
-          ext_run_screener(
-            ticks, umbral = p$umbral, q_sel = p$q_sel, min_caidas = p$min_caidas,
-            max_age_hours = p$cache_h, modo = modo,
-            progress_cb = function(k, n, tk) incProgress(1 / n, detail = tk)
-          )
-        })
-        finish_ok(res)
-      }, error = function(e) finish_error(conditionMessage(e)))
+      finish_error("No fue posible iniciar el proceso. Intenta más tarde.")
     }
 
     observeEvent(input$run_min, run_search("min"))

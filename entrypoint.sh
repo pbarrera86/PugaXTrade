@@ -13,7 +13,7 @@ APP_CACHE_DIR="${APP_DIR}/app_cache"
 
 # Filtro de variables críticas de entorno
 # Coincide con prefijos reales como PGHOST, STRIPE_SECRET_KEY, SMTP_HOST, etc.
-ENV_FILTER='^(PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT$|SUPER_ADMIN|DEFAULT_REFERRER_USERNAME$|REFERRAL_COMMISSION_AMOUNT$).*='
+ENV_FILTER='^(PUGA_|PG|STRIPE_|SMTP_|PUBLIC_|NEON_|DATABASE_URL|DATABASE_|PORT$|SUPER_ADMIN|DEFAULT_REFERRER_USERNAME$|REFERRAL_COMMISSION_AMOUNT$).*='
 
 log() {
   echo "[entrypoint] $*"
@@ -69,7 +69,11 @@ export SHINY_LOG_STDERR=1
 if [ -f "${APP_DIR}/db_init.R" ]; then
   log "Ejecutando migraciones de Base de Datos..."
   cd "$APP_DIR"
-  Rscript db_init.R
+  if [ "${PUGA_RUN_MIGRATIONS:-true}" = "true" ]; then
+    Rscript db_init.R
+  else
+    Rscript scripts/runtime_schema.R
+  fi
 else
   warn "No se encontró ${APP_DIR}/db_init.R; se omite inicialización de base de datos."
 fi

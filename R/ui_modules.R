@@ -52,9 +52,10 @@ section_admin_ui <- function(ns) {
       class = "section",
       div(
         class = "card p-4",
+        uiOutput(ns("operations_status")),
         h3("Usuarios registrados"),
         div(
-          class = "d-flex gap-2 mb-3",
+          class = "d-flex flex-wrap gap-2 mb-3",
           actionButton(ns("adm_activate_btn"), "Activar Membresía Manual", class = "btn btn-warning"),
           actionButton(ns("adm_deactivate_btn"), "Desactivar Membresía", class = "btn btn-danger", style = "background-color: #ff8c00; border-color: #ff8c00;"),
           actionButton(ns("adm_email_btn"), "Enviar Correo", class = "btn btn-info"),
