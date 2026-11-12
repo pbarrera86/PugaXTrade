@@ -31,12 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Compatibilidad ICU (Ubuntu 22.04 libs en 24.04) ───────────────────────────
-# Se instala en BUILD TIME para evitar descargas en runtime y acelerar el arranque
-RUN curl -fsSL http://security.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb \
-    -o /tmp/libicu70.deb \
-    && dpkg -i /tmp/libicu70.deb || true \
-    && rm -f /tmp/libicu70.deb
+# ICU is supplied by the base distribution via apt (libicu-dev).
+# Do not install unsigned cross-distribution packages or suppress build errors.
 
 # ── R packages ─────────────────────────────────────────────────────────────────
 # PPM sirve binarios para Ubuntu Noble. Las dependencias heredadas de Rocker

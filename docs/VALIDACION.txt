@@ -59,4 +59,13 @@ Prueba completa de contraseña/cookie/recarga/logout añadida. Detectó y motiv�
 Staging HTTPS 2026-11-12: sesión del operador recuperada al recargar; panel autenticado y Mi cuenta visibles. CI completo aprobado: https://github.com/pbarrera86/PugaXTrade/actions/runs/43250844349.
 Validación adicional: respaldo y restauración aislada comprobados; cantidades de filas iguales; ensayo de migración correcto, conservando los registros y las sesiones protegidas.
 Checkout test aprobado; cancelación y reactivación de renovación comprobadas. Reentrega de evento firmado aceptada sin duplicar efectos.
-Pendientes: configuración final, aceptación funcional restante, pago fallido/recuperación en el despliegue y política periódica de respaldo. La prueba unitaria de fallo/recuperación está aprobada; no se confunde con una prueba end-to-end en Stripe.
+Actualización posterior, 2026-11-12: PR #17–#20 fusionados. Stripe test end-to-end
+aprobó fallo de renovación y recuperación sin duplicar comisiones. Producción
+usa rol restringido; AAPL y AMXB.MX terminaron y exportaron Excel. Admisión global
+de dos trabajos y exclusión por usuario verificadas. Respaldo mensual con
+restauración aislada y copia externa cifrada activado; hash remoto coincidente
+y carga corrupta rechazada conservando la copia anterior. Monitor: seis checks
+aprobados. CI del PR #20 aprobado, incluido navegador y cifrado.
+
+Esta evidencia es puntual. Consultar docs/CORRECCIONES_COMERCIALES.md para los
+pendientes vigentes y los límites de las pruebas.

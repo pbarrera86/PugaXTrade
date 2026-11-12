@@ -23,12 +23,11 @@ puede usar las variables PG existentes mientras se provisiona el rol restringido
 La aplicación y el worker solo reciben sus propias variables PG. La aplicación
 verifica las versiones de migración sin ejecutar DDL.
 
-Para completar la separación, ejecutar `scripts/runtime_role.sql` con el
-propietario, provisionar en privado la credencial del rol y configurar PGUSER y
-PGPASSWORD para ese rol. Conservar el propietario exclusivamente en las dos
-variables del migrador. Verificar que el rol no herede membresías privilegiadas,
-que PUBLIC no le conceda CREATE sobre el esquema y que no sea propietario de
-tablas. La preparación del código no confirma que producción ya use ese rol.
+Producción ya utiliza el rol restringido; se comprobaron ausencia de membresías
+privilegiadas, de CREATE en el esquema y de propiedad de tablas. El propietario
+se conserva en el servicio de migración. Las instalaciones nuevas deben aplicar
+`scripts/runtime_role.sql`, provisionar la contraseña en privado y verificar
+permisos antes de habilitar tráfico. No imprimir ni publicar las credenciales.
 
 ## Alertas
 
@@ -49,7 +48,14 @@ y las evidencias privadas se administran fuera del repositorio. Un respaldo
 mensual admite perder los cambios posteriores a su fecha; la copia alojada en
 el mismo servidor no cubre la pérdida completa de ese servidor.
 
-Antes de declarar lista la comercialización, comprobar además el ciclo de cobro
-fallido y recuperación en Stripe de pruebas, análisis y exportación con el rol
-restringido, navegación móvil, derechos comerciales de los datos y revisión
-legal del aviso de privacidad, condiciones y política de cancelación.
+La copia externa cifrada ya está activa en el alojamiento del dominio, fuera de
+public_html. El receptor restringido sustituye únicamente la copia actual tras
+comprobar tamaño y hash. No permite shell ni navegación. Se comprobó el rechazo
+de una carga corrupta sin alterar la copia válida. Véase
+[RESPALDO_EXTERNO.md](RESPALDO_EXTERNO.md) para la recuperación. Conservar la clave
+de recuperación fuera del VPS; perderla impide descifrar la copia.
+
+El ciclo de cobro fallido y recuperación de Stripe en modo test, los análisis y
+Excel en producción con rol restringido y una comprobación móvil básica ya
+aprobaron. La lista vigente de pendientes y sus criterios de cierre está en
+[CORRECCIONES_COMERCIALES.md](CORRECCIONES_COMERCIALES.md).
