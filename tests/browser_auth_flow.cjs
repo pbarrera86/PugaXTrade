@@ -48,7 +48,7 @@ const assert = require('node:assert/strict');
     await signedIn.waitFor({ state: 'visible', timeout: 30000 });
     await page.getByRole('button', { name: 'Análisis', exact: true }).click();
     const dismissNotices = async () => {
-      for (const close of await page.locator('.shiny-notification-close').all()) await close.click();
+      await page.locator('.shiny-notification-close').evaluateAll(buttons => buttons.forEach(button => button.click()));
     };
     const checkTickerValidation = async (field, button) => {
       for (const [value, message] of [
