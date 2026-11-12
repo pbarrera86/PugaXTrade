@@ -6,6 +6,7 @@ library(sodium)
 source("R/helpers.R")
 source("R/security.R")
 source("R/billing.R")
+source("R/job_capacity.R")
 con <- DBI::dbConnect(if(test_driver=="RPostgres") RPostgres::Postgres() else RPostgreSQL::PostgreSQL(),host="127.0.0.1",port=55432,dbname="postgres",user="agent")
 for(e in parse("R/db.R")) {
   if(is.call(e) && identical(e[[1]],as.name("<-")) && is.symbol(e[[2]]) && is.call(e[[3]]) && identical(e[[3]][[1]],as.name("function"))) eval(e)
@@ -100,6 +101,33 @@ if(.Platform$OS.type=="unix") {
     db_reset_password_with_token(reset,paste0("fixture password ",i))
   },mc.cores=2)
   check(sum(unlist(results))==1L,"concurrent reset succeeds exactly once")
+}
+# Runtime can mutate application data but cannot change schema or migration history.
+DBI::dbExecute(con,"CREATE ROLE puga_runtime_fixture NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT")
+DBI::dbExecute(con,"GRANT USAGE ON SCHEMA public TO puga_runtime_fixture")
+DBI::dbExecute(con,"GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO puga_runtime_fixture")
+DBI::dbExecute(con,"GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO puga_runtime_fixture")
+DBI::dbExecute(con,"SET ROLE puga_runtime_fixture")
+check(query("SELECT count(*) AS n FROM users")$n[[1]]>0,"runtime can read users")
+check(inherits(try(DBI::dbExecute(con,"ALTER TABLE users ADD COLUMN forbidden_test boolean"),silent=TRUE),"try-error"),"runtime cannot alter users")
+# An eight-client burst must admit exactly two distinct users, one job per user.
+DBI::dbExecute(con,"RESET ROLE")
+for(i in 103:110) DBI::dbExecute(con,"INSERT INTO users(id,username,active,email_verified) VALUES($1,$2,true,true)",params=list(sprintf("00000000-0000-0000-0000-%012d",i),paste0("load_fixture_",i)))
+if(.Platform$OS.type=="unix") {
+  results <- parallel::mclapply(103:110,function(i) {
+    con <<- connect();on.exit(DBI::dbDisconnect(con))
+    DBI::dbExecute(con,"SET ROLE puga_runtime_fixture")
+    puga_job_acquire(sprintf("00000000-0000-0000-0000-%012d",i))
+  },mc.cores=8)
+  check(sum(!vapply(results,is.null,logical(1)))==2L,"eight concurrent requests admit exactly two analysis jobs")
+  check(query("SELECT count(*) AS n FROM analysis_jobs")$n[[1]]==2L,"capacity shared across connections")
+  occupied <- query("SELECT user_id,token FROM analysis_jobs LIMIT 1")
+  check(is.null(puga_job_acquire(occupied$user_id[[1]])),"same user cannot start a second job")
+  puga_job_release(occupied$token[[1]])
+  t <- puga_job_acquire(occupied$user_id[[1]])
+  check(is.character(t),"completion releases capacity")
+  DBI::dbExecute(con,"UPDATE analysis_jobs SET expires_at=now()-interval '1 second'")
+  check(is.character(puga_job_acquire(uid)),"expired worker lease recovers capacity")
 }
 DBI::dbDisconnect(con)
 cat("DATABASE SUITE OK\n")

@@ -3,6 +3,7 @@ setwd("/srv/shiny-server/app")
 source("R/db.R")
 source("R/auth_helpers.R")
 repeat {
+  writeLines(format(Sys.time(),tz="UTC"),"/tmp/puga-email-worker-heartbeat")
   tryCatch(.with_conn({
     DBI::dbWithTransaction(con, {
       row <- DBI::dbGetQuery(con,"SELECT * FROM email_outbox WHERE sent_at IS NULL AND attempts<8 AND next_attempt_at<=now() ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED")

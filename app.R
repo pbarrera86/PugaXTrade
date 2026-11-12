@@ -29,14 +29,9 @@ thematic_shiny(font = "auto")
 library(future)
 library(furrr)
 
-# Eliminar el límite duro de parallelly (300% CPU) que falla en máquinas con mc.cores=1
-# Esto es seguro porque usamos multisession (workers Rscript separados, no mclapply)
-options(parallelly.maxWorkers.localhost = Inf)
-
-# Número de workers: mínimo 1, máximo 4 para no saturar máquinas pequeñas
-n_cores <- max(1L, min(4L, parallel::detectCores(logical = TRUE) %||% 2L - 1L))
-plan(multisession, workers = n_cores)
-message(sprintf("[Parallel] Plan: multisession con %d workers", n_cores))
+# Heavy jobs use bounded, ephemeral mirai processes. Do not spawn a pool per
+# Shiny process before a request has acquired a shared capacity slot.
+plan(sequential)
 
 # ----------------- Cargar .Renviron del proyecto y del usuario -----------------
 proj_env <- file.path(getwd(), ".Renviron")
@@ -167,6 +162,7 @@ my_theme <- bs_theme(
 source("R/helpers.R", encoding = "UTF-8")
 source("R/db.R", encoding = "UTF-8") # pool + helpers Postgres
 source("R/security.R", encoding = "UTF-8")
+source("R/job_capacity.R", encoding = "UTF-8")
 source("R/finance_core.R", encoding = "UTF-8") # ANÁLISIS + Excel
 source("R/institutional_core.R", encoding = "UTF-8")
 source("R/extremos_core.R", encoding = "UTF-8") # Screener Extremos Locales (QMin/QMax)
@@ -911,13 +907,7 @@ ui <- function(req) {
   fluidPage(theme = my_theme, useShinyjs(), dynamic_head, uiOutput("root_ui"))
 }
 
-# Verificación de esquema una sola vez al inicio (no por sesión)
-tryCatch(db_ensure_schema(), error = function(e) {
-  message("Error ensuring schema: ", e$message)
-})
-tryCatch(db_ensure_login_attempts_table(), error = function(e) {
-  message("Error ensuring login_attempts: ", e$message)
-})
+# Schema changes run at deployment time, never under the interactive role.
 
 server <- function(input, output, session) {
   session$userData$current_user <- reactiveVal(NULL)
@@ -1083,8 +1073,8 @@ puga_resource_map$resourcePaths[c("webhook", "auth")] <- list(
 puga_app$httpHandler <- puga_http_handler(puga_app$httpHandler, shiny::parseQueryString,
   .handle_set_session, .handle_logout_cookie, handle_stripe_webhook,
   readiness=function(req) tryCatch({
-    ready <- .with_conn(DBI::dbGetQuery(con,"SELECT 1 FROM schema_migrations WHERE version='001_commercial_security.sql'"))
-    if(nrow(ready)!=1L) stop("Migration not applied")
+    ready <- .with_conn(DBI::dbGetQuery(con,"SELECT version FROM schema_migrations"))
+    if(length(setdiff(basename(list.files("migrations",pattern="[.]sql$")),ready$version))) stop("Migration not applied")
     .auth_response(200,"ok")
   },error=function(e) .auth_response(503,"not ready")))
 puga_app

@@ -6,6 +6,24 @@ admin_server <- function(id, user_reactive, users_trigger) {
       req(!is.null(u), isTRUE(u$active[[1]]), is_super_admin(u) || db_is_admin(u))
     }
 
+    output$operations_status <- renderUI({
+      require_admin()
+      invalidateLater(60000, session)
+      tryCatch(.with_conn({
+        mail <- DBI::dbGetQuery(con, "SELECT count(*) FILTER (WHERE sent_at IS NULL AND attempts>=8) AS failed, count(*) FILTER (WHERE sent_at IS NULL AND next_attempt_at<now()-interval '30 minutes') AS delayed FROM email_outbox")
+        checks <- DBI::dbGetQuery(con, "SELECT name, ok, checked_at, detail FROM operational_checks ORDER BY name")
+        warnings <- character()
+        if (mail$failed[[1]]>0) warnings <- c(warnings, sprintf("%s correos agotaron sus reintentos.",mail$failed[[1]]))
+        if (mail$delayed[[1]]>0) warnings <- c(warnings, sprintf("%s correos llevan más de 30 minutos en espera.",mail$delayed[[1]]))
+        if (!nrow(checks) || any(checks$checked_at < Sys.time()-900)) warnings <- c(warnings,"El monitoreo no está actualizado. Revisar el servicio de monitoreo.")
+        if (nrow(checks)) warnings <- c(warnings,checks$detail[!checks$ok])
+        tagList(h4("Estado de operación"),
+          div(role=if(length(warnings)) "alert" else "status", class=if(length(warnings)) "alert alert-warning" else "alert alert-success",
+            if(length(warnings)) tags$ul(lapply(warnings,tags$li)) else "Sin incidencias detectadas por el monitoreo."),
+          p(class="text-muted","Comprobación cada 5 minutos; este panel se actualiza cada minuto. Las alertas se muestran aquí y en el registro del servidor."))
+      }),error=function(e) div(role="alert",class="alert alert-warning","No se pudo consultar el estado de operación."))
+    })
+
     admin_users_df <- reactive({
       users_trigger() 
       u <- user_reactive()

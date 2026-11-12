@@ -90,8 +90,8 @@ sql_safe <- function(x) if (is.null(x)) NA_character_ else as.character(x)
     port        = port,
     sslmode     = sslmode,
     idleTimeout = 300,
-    minSize     = 2,
-    maxSize     = 10 # Adjust based on server capacity
+    minSize     = 1,
+    maxSize     = 4
   )
   if (nzchar(hostaddr)) {
     args$hostaddr <- hostaddr
