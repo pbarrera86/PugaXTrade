@@ -18,3 +18,16 @@ for (const action of ['set-session', 'logout']) {
     if (action === 'set-session') assert.equal(submitted.children[0].value, 'one-use-fixture');
   });
 }
+
+// Shiny rejects handlers unless they declare exactly one argument. A rejected
+// registration aborts the rest of the shipped script, including reconnection.
+test('all shipped custom message handlers satisfy Shiny registration', () => {
+  const handlers = {};
+  const script = fs.readFileSync('www/script.js', 'utf8').split('// ── Conexión estable')[0];
+  vm.runInNewContext(script, { Shiny: { addCustomMessageHandler(name, handler) {
+    assert.equal(handler.length, 1, name);
+    handlers[name] = handler;
+  } } });
+  assert.ok(handlers.clearSessionCookie);
+  assert.ok(handlers.restoreHttpOnlySession);
+});

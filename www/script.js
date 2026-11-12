@@ -26,7 +26,7 @@ Shiny.addCustomMessageHandler('restoreHttpOnlySession', function(x) {
 Shiny.addCustomMessageHandler('setHttpOnlyCookie', function(x) {
   pugaAuthPost('set-session', {code: x.code});
 });
-Shiny.addCustomMessageHandler('clearSessionCookie', function() {
+Shiny.addCustomMessageHandler('clearSessionCookie', function(x) {
   pugaAuthPost('logout', {});
 });
 
