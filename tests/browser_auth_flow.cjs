@@ -35,7 +35,7 @@ const assert = require('node:assert/strict');
       page.waitForNavigation(),
       page.getByRole('button', { name: 'Entrar', exact: true }).click(),
     ]);
-    const signedIn = page.getByRole('button', { name: 'Cerrar sesión', exact: true });
+    const signedIn = page.getByRole('button', { name: /Cerrar sesión$/ });
     await signedIn.waitFor({ state: 'visible', timeout: 30000 }).catch(async error => { console.log('Login page state:', (await page.textContent('body')).slice(0, 1200)); throw error; });
     const cookie = (await page.context().cookies()).find(item => item.name === 'puga_auth');
     assert.ok(cookie, 'successful password login must create the session cookie');
