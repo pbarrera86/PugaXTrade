@@ -33,3 +33,7 @@ Documentacion_PugaXTrade.*
 # Local deployment credentials
 .env*
 !.env.staging.example
+
+# Python operational checks
+__pycache__/
+*.py[cod]

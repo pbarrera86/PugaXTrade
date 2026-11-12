@@ -1,0 +1,23 @@
+name: Encrypted offsite backup checks
+on:
+  push:
+    paths:
+      - 'scripts/offsite_backup.py'
+      - 'scripts/hostinger_backup_receiver.py'
+      - 'tests/offsite_backup_test.py'
+      - '.github/workflows/offsite-backup.yml'
+  pull_request:
+    paths:
+      - 'scripts/offsite_backup.py'
+      - 'scripts/hostinger_backup_receiver.py'
+      - 'tests/offsite_backup_test.py'
+      - '.github/workflows/offsite-backup.yml'
+jobs:
+  transport-and-encryption:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify GnuPG is available
+        run: gpg --version && gpgconf --version
+      - name: Test encryption, atomic replacement, and rejected transfers
+        run: python3 -m unittest discover -s tests -p offsite_backup_test.py -v
