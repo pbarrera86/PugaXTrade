@@ -279,7 +279,10 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
         return()
       }
       ticks <- parse_ticks(input$tickers)
-      validate(need(length(ticks) <= 1500L, "El máximo por análisis es de 1500 símbolos."))
+      if (length(ticks) > 1500L) {
+        showNotification("El máximo por análisis es de 1500 símbolos.", type = "warning")
+        return()
+      }
       if (length(ticks) == 0) {
         showNotification("Ingresa al menos un ticker válido.", type = "warning")
         return()
