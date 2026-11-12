@@ -2,21 +2,37 @@
 // Las cookies de sesión se gestionan server-side (HttpOnly) via /auth/set-session
 // JS nunca lee ni escribe la cookie puga_auth directamente.
 
-// Redirige al endpoint server-side que establece la cookie con flag HttpOnly
-Shiny.addCustomMessageHandler('setHttpOnlyCookie', function(x) {
-  var base = window.location.origin;
-  window.location.replace(base + '/?action=set-session&tok=' + encodeURIComponent(x.tok));
+// El navegador recibe solo un código de un uso (60 s), nunca la sesión persistente.
+function pugaAuthPost(action, fields) {
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/auth/' + action;
+  Object.keys(fields).forEach(function (name) {
+    var input = document.createElement('input');
+    input.type = 'hidden'; input.name = name; input.value = fields[name];
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
+}
+Shiny.addCustomMessageHandler('restoreHttpOnlySession', function(x) {
+  // The session-specific URL carries no persistent auth token. Only the server
+  // reads the HttpOnly cookie included automatically in this same-origin POST.
+  var url = new URL(x.url, window.location.href);
+  if (url.origin !== window.location.origin) return;
+  fetch(url.href, { method: 'POST', credentials: 'same-origin', cache: 'no-store' })
+    .catch(function() { console.warn('No se pudo recuperar la sesión. Recarga la página.'); });
 });
-
-// Logout: redirige al endpoint que borra la cookie HttpOnly server-side
+Shiny.addCustomMessageHandler('setHttpOnlyCookie', function(x) {
+  pugaAuthPost('set-session', {code: x.code});
+});
 Shiny.addCustomMessageHandler('clearSessionCookie', function(x) {
-  var base = window.location.origin;
-  window.location.replace(base + '/?action=logout');
+  pugaAuthPost('logout', {});
 });
 
 // reset_idle y otros handlers de UX
 Shiny.addCustomMessageHandler('reset_idle', function(x) {
-  // El timer de inactividad se reinicia en el lado R con shinyjs
+  window.dispatchEvent(new Event("puga-reset-idle"));
 });
 
 // ── Conexión estable (keepalive + recuperación automática) ───────────────────
@@ -91,4 +107,17 @@ Shiny.addCustomMessageHandler('reset_idle', function(x) {
     if (!window.__pugaxKeepalive) { window.__pugaxKeepalive = true; startKeepalive(); }
   });
   $(document).on('shiny:disconnected', scheduleReload);
+})();
+
+// Human activity only: keepalive does not renew the idle deadline.
+(function () {
+  var last = 0;
+  function activity() {
+    if (Date.now() - last < 15000) return;
+    last = Date.now();
+    if (window.Shiny && Shiny.setInputValue) Shiny.setInputValue('puga_activity', last, {priority:'event'});
+  }
+  ['pointerdown','keydown','touchstart','scroll','puga-reset-idle'].forEach(function (event) {
+    window.addEventListener(event, activity, {passive:true});
+  });
 })();

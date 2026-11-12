@@ -64,7 +64,7 @@ reset_panel <- function(id, token = "") {
       br(),
       div(
         class = "card p-4",
-        shiny::hidden(textInput(ns("token_hidden"), label = NULL, value = token)),
+        shinyjs::hidden(textInput(ns("token_hidden"), label = NULL, value = token)),
         passwordInput(ns("new_pass1"), "Nueva contraseña", width = "100%"),
         passwordInput(ns("new_pass2"), "Confirmar nueva contraseña", width = "100%"),
         actionButton(ns("btn_reset"), "Actualizar contraseña", class = "btn btn-primary"),
@@ -125,6 +125,7 @@ auth_module <- function(id, set_view, on_success) {
           textInput(ns("login_user"), "Usuario o correo", width = "100%"),
           passwordInput(ns("login_pass"), "Contraseña", width = "100%"),
           actionButton(ns("btn_login"), "Entrar", class = "btn btn-success"),
+          actionButton(ns("btn_resend_verify"), "Reenviar verificación", class = "btn btn-outline-secondary"),
           uiOutput(ns("login_msg")),
           tags$script(HTML(sprintf("
             $('#%s, #%s').on('keyup', function(e) {
@@ -217,17 +218,25 @@ auth_module <- function(id, set_view, on_success) {
             return()
           }
           db_record_login_attempt(u, success = TRUE)
-          tok <- db_issue_session_token(res$user$id[[1]], days = 7)
-          # Redirigir al endpoint server-side para establecer la cookie con flag HttpOnly
-          session$sendCustomMessage("setHttpOnlyCookie", list(tok = tok))
-          session$userData$session_token(tok)
-          on_success(res$user)
+          code <- db_create_login_handoff(res$user$id[[1]])
+          session$sendCustomMessage("setHttpOnlyCookie", list(code = code))
         },
         error = function(e) {
-          output$login_msg <- renderUI(div(class = "alert alert-danger mt-2", paste("Error de conexión:", e$message)))
+          output$login_msg <- renderUI(div(class = "alert alert-danger mt-2", "No se pudo iniciar sesión. Intenta de nuevo."))
           showNotification("No se pudo conectar a la base de datos. Reintentando...", type = "error")
         }
       )
+    })
+
+    observeEvent(input$btn_resend_verify, {
+      identifier <- trimws(input$login_user %||% "")
+      req(nzchar(identifier))
+      key <- paste0("verify:",tolower(identifier))
+      if (!db_is_rate_limited(key)) {
+        db_record_login_attempt(key,FALSE)
+        tryCatch(db_resend_verification(identifier),error=function(e) message("[Auth] Verification retry failed"))
+      }
+      output$login_msg <- renderUI(div(class="alert alert-info mt-2", "Si la cuenta requiere verificación, el enlace se enviará por correo. Las solicitudes tienen un límite de frecuencia."))
     })
 
     # VERIFICATION LOGIC
@@ -256,7 +265,10 @@ auth_module <- function(id, set_view, on_success) {
 
       tryCatch(
         {
-          email <- trimws(input$reg_email)
+          email <- tolower(trimws(input$reg_email))
+          key <- paste0("register:",email)
+          if (db_is_rate_limited(key)) stop("Demasiados intentos. Intenta de nuevo en 15 minutos.")
+          db_record_login_attempt(key, FALSE)
           name <- trimws(input$reg_name)
           user <- trimws(input$reg_username)
           # Strict Regex for Email
@@ -275,7 +287,7 @@ auth_module <- function(id, set_view, on_success) {
             output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "Ingresa una contraseña."))
             return()
           }
-          if (nchar(pass1) < 8) {
+          if (!auth_valid_password(pass1)) {
             output$reg_msg <- renderUI(div(class = "alert alert-danger mt-2", "La contraseña debe tener al menos 8 caracteres."))
             return()
           }
@@ -315,7 +327,7 @@ auth_module <- function(id, set_view, on_success) {
                   tryCatch(f_admin(res$user, plain_password = pass1), error = function(e) message("Admin Notify Fail: ", e$message))
                 }
                 # 2. Send Verification Email
-                v_token <- if (!is.null(res$user$verification_token)) res$user$verification_token[[1]] else NULL
+                v_token <- res$verification_token
                 if (!is.null(v_token)) {
                   f_verify <- get0("auth_send_verification_email", envir = .GlobalEnv, inherits = TRUE)
                   if (is.function(f_verify)) {
@@ -341,7 +353,7 @@ auth_module <- function(id, set_view, on_success) {
         },
         error = function(e) {
           message("FATAL CRASH in btn_do_register: ", e$message)
-          showNotification(paste("Error en el registro:", e$message), type = "error")
+          showNotification("No se pudo completar el registro. Verifica tus datos o intenta de nuevo.", type = "error")
         }
       )
     })
@@ -352,6 +364,12 @@ auth_module <- function(id, set_view, on_success) {
         output$reset_req_msg <- renderUI(div(class = "alert alert-danger mt-2", "Indica tu correo."))
         return()
       }
+      key <- paste0("reset:",tolower(email))
+      if (db_is_rate_limited(key)) {
+        output$reset_req_msg <- renderUI(div(class="alert alert-warning", "Espera 15 minutos antes de solicitar otro enlace."))
+        return()
+      }
+      db_record_login_attempt(key,FALSE)
       u <- db_get_user_by_email(email)
       output$reset_req_msg <- renderUI(div(class = "alert alert-success mt-2", "Si el correo existe, te enviamos un enlace."))
       if (nrow(u) > 0) {
@@ -372,7 +390,7 @@ auth_module <- function(id, set_view, on_success) {
         output$reset_msg <- renderUI(div(class = "alert alert-danger mt-2", "Completa ambos campos de contraseña."))
         return()
       }
-      if (nchar(p1) < 8) {
+      if (!auth_valid_password(p1)) {
         output$reset_msg <- renderUI(div(class = "alert alert-danger mt-2", "La contraseña debe tener al menos 8 caracteres."))
         return()
       }
@@ -386,6 +404,7 @@ auth_module <- function(id, set_view, on_success) {
         return()
       }
       showModal(modalDialog(title = "Contraseña actualizada", p("Tu contraseña se actualizó."), easyClose = TRUE, footer = modalButton("Cerrar")))
+      updateQueryString("", mode = "replace")
       subview("login")
     })
   })

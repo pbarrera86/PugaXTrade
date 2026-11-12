@@ -279,6 +279,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
         return()
       }
       ticks <- parse_ticks(input$tickers)
+      validate(need(length(ticks) <= 1500L, "El máximo por análisis es de 1500 símbolos."))
       if (length(ticks) == 0) {
         showNotification("Ingresa al menos un ticker válido.", type = "warning")
         return()
@@ -632,6 +633,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE)) {
         sprintf("extremos_locales_%s_%s.xlsx", if (modo_res() == "max") "maximos" else "minimos", format(Sys.Date(), "%Y%m%d"))
       },
       content = function(file) {
+        req(can_analyze(), rv$result)
         r <- rv$result
         wb <- openxlsx::createWorkbook()
         add <- function(nm, df) {

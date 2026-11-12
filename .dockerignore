@@ -41,3 +41,6 @@ Readme.md
 # IDE
 *.code-workspace
 .vscode/
+
+# Deployment secrets are supplied only at runtime
+.env*

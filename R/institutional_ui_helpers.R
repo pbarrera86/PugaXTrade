@@ -6,9 +6,7 @@ suppressWarnings({
   library(htmltools)
 })
 
-`%||%` <- function(a, b) {
-  if (is.null(a) || length(a) == 0 || (is.character(a) && !nzchar(a[1]))) b else a
-}
+# Shared %||% comes from helpers.R (or db.R in background workers).
 
 inst_ui_global_head <- function() {
   tags$head(

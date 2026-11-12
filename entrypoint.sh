@@ -34,10 +34,10 @@ FILTERED_ENV="$(env | grep -E "$ENV_FILTER" || true)"
 # 1) Variables para R globalmente
 if [ -n "$FILTERED_ENV" ]; then
   printf '%s\n' "$FILTERED_ENV" > "$R_ENVIRON_SITE"
-  chmod 0644 "$R_ENVIRON_SITE"
+  chmod 0640 "$R_ENVIRON_SITE"
 else
   : > "$R_ENVIRON_SITE"
-  chmod 0644 "$R_ENVIRON_SITE"
+  chmod 0640 "$R_ENVIRON_SITE"
   warn "No se encontraron variables filtradas para $R_ENVIRON_SITE"
 fi
 
@@ -57,6 +57,7 @@ chmod 0600 "$APP_RENVIRON"
 
 # Ownership si existe usuario shiny
 chown -R shiny:shiny "$APP_CACHE_DIR" 2>/dev/null || true
+chown root:shiny "$R_ENVIRON_SITE"
 chown shiny:shiny "$APP_RENVIRON" 2>/dev/null || true
 chown shiny:shiny "$SHINY_RENVIRON" 2>/dev/null || true
 chown -R shiny:shiny "$LOG_DIR" 2>/dev/null || true
@@ -68,7 +69,7 @@ export SHINY_LOG_STDERR=1
 if [ -f "${APP_DIR}/db_init.R" ]; then
   log "Ejecutando migraciones de Base de Datos..."
   cd "$APP_DIR"
-  Rscript db_init.R || warn "db_init.R devolvió error; se continúa con el arranque."
+  Rscript db_init.R
 else
   warn "No se encontró ${APP_DIR}/db_init.R; se omite inicialización de base de datos."
 fi

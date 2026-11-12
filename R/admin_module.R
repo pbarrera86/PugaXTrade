@@ -1,6 +1,10 @@
 admin_server <- function(id, user_reactive, users_trigger) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    require_admin <- function() {
+      u <- user_reactive()
+      req(!is.null(u), isTRUE(u$active[[1]]), is_super_admin(u) || db_is_admin(u))
+    }
 
     admin_users_df <- reactive({
       users_trigger() 
@@ -70,6 +74,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_activate_btn, {
+      require_admin()
       rows <- input$users_tbl_rows_selected
       if (is.null(rows) || length(rows) == 0) {
         showNotification("Selecciona al menos un usuario de la tabla.", type = "warning")
@@ -90,6 +95,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_confirm_activate, {
+      require_admin()
       removeModal()
       tryCatch(
         {
@@ -154,6 +160,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_email_btn, {
+      require_admin()
       rows <- input$users_tbl_rows_selected
       if (is.null(rows) || length(rows) == 0) {
         showNotification("Selecciona al menos un usuario.", type = "warning")
@@ -179,6 +186,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_email_tmpl, {
+      require_admin()
       req(input$adm_email_tmpl)
       tm <- input$adm_email_tmpl
       if (tm == "renew") {
@@ -210,6 +218,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_confirm_email, {
+      require_admin()
       removeModal()
       tryCatch(
         {
@@ -256,6 +265,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_deactivate_btn, {
+      require_admin()
       rows <- input$users_tbl_rows_selected
       if (is.null(rows) || length(rows) == 0) {
         showNotification("Selecciona al menos un usuario de la tabla.", type = "warning")
@@ -280,6 +290,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_confirm_deactivate, {
+      require_admin()
       removeModal()
       tryCatch(
         {
@@ -343,6 +354,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_clear_cache, {
+      require_admin()
       showModal(modalDialog(
         title = "Borrar Caché",
         "¿Estás seguro que quieres borrar TODA la caché de análisis? Esto obligará a descargar datos nuevos para todos los tickers.",
@@ -354,6 +366,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_confirm_clear_cache, {
+      require_admin()
       removeModal()
       if (exists("db_clear_ticker_cache")) {
         tryCatch(
@@ -371,6 +384,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_delete_btn, {
+      require_admin()
       rows <- input$users_tbl_rows_selected
       if (is.null(rows) || length(rows) == 0) {
         showNotification("Selecciona al menos un usuario de la tabla.", type = "warning")
@@ -391,6 +405,7 @@ admin_server <- function(id, user_reactive, users_trigger) {
     })
 
     observeEvent(input$adm_confirm_delete, {
+      require_admin()
       removeModal()
       tryCatch(
         {

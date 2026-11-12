@@ -1,6 +1,6 @@
 Términos y Condiciones de Uso
 
-Última actualización: 03/10/2025
+Última actualización: 11/11/2026
 Titular del servicio: PEDRO BARRERA PUGA, RFC BAPP860629B28, con domicilio en LOS MORALES 13, EL CARRIZAL, QUERÉTARO, QUERÉTARO, MÉXICO, C.P. 76030 (“PugaX Trade Inteligente”, “la App”, “nosotros”).
 Contacto: +52 5951148765 · p.barrera.puga@gmail.com
 
@@ -43,7 +43,7 @@ Al cancelar, mantendrás acceso hasta el fin del periodo pagado.
 
 6. Prueba Gratuita
 
-Si ofrecemos prueba gratuita, al finalizar se activará la suscripción de pago salvo cancelación previa. Podemos limitar o revocar la prueba para evitar abusos.
+La prueba gratuita de registro dura 7 días y no requiere tarjeta. Al finalizar, el análisis se bloquea hasta que contrates una membresía mediante Stripe. La prueba de registro no inicia cobros automáticamente. Podemos limitar o revocar la prueba para evitar abusos.
 
 7. Licencia de Uso
 
@@ -59,7 +59,7 @@ Si subes o ingresas datos (p. ej., tickers), declaras que tienes derecho a usarl
 
 10. Integraciones de Terceros
 
-La App se apoya en servicios de terceros (p. ej., Stripe para pagos, shinyapps.io para hosting, SMTP/email para notificaciones). No somos responsables por indisponibilidad o fallas imputables a dichos terceros, pero haremos esfuerzos razonables para restablecer el servicio.
+La App se apoya en servicios de terceros (p. ej., Stripe para pagos, Hostinger/Dokploy para hosting y Neon para la base de datos, SMTP/email para notificaciones). No somos responsables por indisponibilidad o fallas imputables a dichos terceros, pero haremos esfuerzos razonables para restablecer el servicio.
 
 11. Disponibilidad y Mantenimiento
 

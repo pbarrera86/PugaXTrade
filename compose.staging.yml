@@ -1,0 +1,74 @@
+# Standalone staging stack; never combine with docker-compose.yml.
+# docker compose --env-file .env.staging -f compose.staging.yml up -d --build
+name: pugaxtrade-staging
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: puga_staging
+      POSTGRES_DB: puga_staging
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:?Set a unique staging database password}
+    volumes:
+      - staging_database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U puga_staging -d puga_staging"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [database]
+  app:
+    build: .
+    image: pugaxtrade-staging:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3839:3838"
+    environment: &staging_environment
+      PUBLIC_BASE_URL: ${STAGING_PUBLIC_BASE_URL:?Set staging HTTPS URL}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: puga_staging
+      PGUSER: puga_staging
+      PGPASSWORD: ${STAGING_DB_PASSWORD:?Set a unique staging database password}
+      PGSSLMODE: disable
+      STRIPE_ALLOW_TEST: "1"
+      STRIPE_SECRET_KEY: ${STAGING_STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STAGING_STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_PRICE_ID: ${STAGING_STRIPE_PRICE_ID:-}
+      STRIPE_WEBHOOK_SECRET: ${STAGING_STRIPE_WEBHOOK_SECRET:-}
+      SMTP_HOST: ${STAGING_SMTP_HOST:-}
+      SMTP_PORT: ${STAGING_SMTP_PORT:-587}
+      SMTP_USER: ${STAGING_SMTP_USER:-}
+      SMTP_PASS: ${STAGING_SMTP_PASS:-}
+      SMTP_FROM: ${STAGING_SMTP_FROM:-}
+      SMTP_ADMIN: ${STAGING_SMTP_ADMIN:-}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        case "$${STRIPE_SECRET_KEY}" in ""|sk_test_*) ;; *) echo 'Staging requires Stripe test keys' >&2; exit 1;; esac
+        case "$${STRIPE_PUBLISHABLE_KEY}" in ""|pk_test_*) ;; *) echo 'Staging requires Stripe test keys' >&2; exit 1;; esac
+        exec /usr/local/bin/entrypoint.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [database, outbound]
+  email-worker:
+    image: pugaxtrade-staging:local
+    restart: unless-stopped
+    init: true
+    working_dir: /srv/shiny-server/app
+    command: ["Rscript", "scripts/email_worker.R"]
+    environment: *staging_environment
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks: [database, outbound]
+volumes:
+  staging_database:
+networks:
+  database:
+    internal: true
+  outbound:

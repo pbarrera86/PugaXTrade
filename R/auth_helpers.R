@@ -107,67 +107,11 @@ auth_build_reset_link <- function(token) {
 # Envía de forma aislada (Process Isolation) para evitar crashes del proceso Shiny
 .fire_and_forget_email <- function(to_email, subject, body_text) {
   if (is.null(to_email) || !nzchar(to_email)) return(invisible(FALSE))
-  cfg <- .auth_load_cfg()
-  if (is.null(cfg$host) || !nzchar(cfg$host)) return(invisible(FALSE))
-
-  from_addr  <- cfg$from  %||% "no-reply@pugax.trade"
-  host       <- cfg$host
-  port       <- cfg$port  %||% "587"
-  user       <- cfg$user  %||% ""
-  pass       <- cfg$pass  %||% ""
-  pass_clean <- gsub("\\s+", "", pass)
-
-  # Mime Body (RFC 5322)
-  mime_body <- .build_mime_message(from_addr, to_email, subject, body_text)
-
-  # Para el "MAIL FROM" (envelope), Gmail rechaza espacios o corchetes:
-  envelope_from <- if (grepl("<.*>", from_addr)) sub(".*<(.*)>.*", "\\1", from_addr) else from_addr
-  
-  is_windows <- .Platform$OS.type == "windows"
-
-  if (is_windows) {
-    # ── MODO WINDOWS (Nativo R) ──────────────────────────────────────────────
-    # Reportado como estable en escritorio; usamos tryCatch silencioso
-    if (!requireNamespace("curl", quietly = TRUE)) return(invisible(FALSE))
-    scheme <- if (as.character(port) == "465") "smtps://" else "smtp://"
-    try({
-      curl::send_mail(
-        mail_from = envelope_from, mail_rcpt = trimws(to_email),
-        message = mime_body, smtp_server = paste0(scheme, host, ":", port),
-        username = user, password = pass_clean,
-        use_ssl = "force", ssl_verifypeer = 1L, timeout = 10L, verbose = FALSE
-      )
-    }, silent = TRUE)
-  } else {
-    # ── MODO LINUX/DOCKER (Process Isolation) ────────────────────────────────
-    # La solución definitiva para evitar "Disconnected from the server" (segfaults)
-    # Usamos el comando 'curl' del sistema en SEGUNDO PLANO (wait = FALSE)
-    
-    tmp_msg <- tempfile(fileext = ".eml")
-    writeLines(mime_body, tmp_msg, useBytes = TRUE)
-    
-    scheme <- if (as.character(port) == "465") "smtps://" else "smtp://"
-    url <- paste0(scheme, host, ":", port)
-    
-    # Argumentos para curl del sistema
-    args <- c(
-      "--url", shQuote(url),
-      "--ssl-reqd",
-      "--user", shQuote(paste0(user, ":", pass_clean)),
-      "--mail-from", shQuote(envelope_from),
-      "--mail-rcpt", shQuote(trimws(to_email)),
-      "--upload-file", shQuote(tmp_msg),
-      "--silent", "--show-error"
-    )
-    
-    # Invocamos de forma asíncrona. Si falla curl, R ni se entera. No hay desconexión.
-    try({
-      system2("curl", args = args, wait = FALSE, stdout = FALSE, stderr = FALSE)
-      # Nota: el archivo temporal será limpiado por el sistema o podemos intentar borrarlo en R
-      # pero como es wait=FALSE, no podemos borrarlo inmediatamente. El SO lo limpia en /tmp.
-    }, silent = TRUE)
-  }
-  
+  # Reject SMTP header injection, including user-provided recipient data.
+  if (any(grepl("[\r\n]",c(to_email,subject)))) stop("Encabezado de correo inválido.")
+  .with_conn({
+    DBI::dbExecute(con,"INSERT INTO email_outbox(recipient,subject,body) VALUES($1,$2,$3)",params=list(to_email,subject,body_text))
+  })
   invisible(TRUE)
 }
 
@@ -364,13 +308,14 @@ auth_create_checkout_session <- function(user_row) {
 
   res <- try(httr::POST(
     "https://api.stripe.com/v1/checkout/sessions",
-    httr::authenticate(cfg$secret, ""),
-    httr::add_headers(`Idempotency-Key` = paste0("ik_", as.integer(Sys.time()), "_", sample(1000:9999, 1))),
+    httr::authenticate(cfg$secret, ""), httr::timeout(15),
+    httr::add_headers(`Idempotency-Key` = paste0("checkout_",user_row$id[[1]],"_",cfg$price_id,"_",floor(as.numeric(Sys.time())/3600))),
     body = list(
       mode = "subscription",
       success_url = success_url,
       cancel_url = cancel_url,
       client_reference_id = as.character(user_row$id[[1]]),
+      "subscription_data[metadata][user_id]" = as.character(user_row$id[[1]]),
       "line_items[0][price]" = cfg$price_id,
       "line_items[0][quantity]" = 1,
       customer_email = user_row$email[[1]],
@@ -412,7 +357,7 @@ auth_check_checkout_paid <- function(session_id, retries = 6, wait_seconds = 1) 
   for (i in seq_len(retries)) {
     res <- try(httr::GET(
       paste0("https://api.stripe.com/v1/checkout/sessions/", session_id),
-      httr::authenticate(cfg$secret, "")
+      httr::authenticate(cfg$secret, ""), httr::timeout(15)
     ), silent = TRUE)
     if (!inherits(res, "try-error") && httr::status_code(res) %in% 200:299) {
       ct <- httr::content(res)
@@ -422,7 +367,7 @@ auth_check_checkout_paid <- function(session_id, retries = 6, wait_seconds = 1) 
       if (is.null(email) || !nzchar(email)) email <- ct$customer_email %||% NA_character_
       status <- ct$status %||% ""
       payment_status <- ct$payment_status %||% ""
-      if (identical(status, "complete") || identical(payment_status, "paid")) {
+      if (identical(status, "complete") && identical(payment_status, "paid")) {
         return(list(ok = TRUE, paid = TRUE, email = email, customer = customer, subscription = subscription))
       }
     }
@@ -439,7 +384,7 @@ auth_check_checkout_paid <- function(session_id, retries = 6, wait_seconds = 1) 
   }
   res <- try(httr::GET(
     paste0("https://api.stripe.com/v1/subscriptions/", sub_id),
-    httr::authenticate(cfg$secret, "")
+    httr::authenticate(cfg$secret, ""), httr::timeout(15)
   ), silent = TRUE)
   if (inherits(res, "try-error") || !(httr::status_code(res) %in% 200:299)) {
     return(NULL)
@@ -454,7 +399,7 @@ auth_check_checkout_paid <- function(session_id, retries = 6, wait_seconds = 1) 
   }
   res <- try(httr::POST(
     paste0("https://api.stripe.com/v1/subscriptions/", sub_id),
-    httr::authenticate(cfg$secret, ""),
+    httr::authenticate(cfg$secret, ""), httr::timeout(15),
     body = list(cancel_at_period_end = tolower(as.character(flag))),
     encode = "form"
   ), silent = TRUE)
@@ -496,7 +441,7 @@ auth_renew_now <- function(user_row) {
 
   res <- try(httr::POST(
     url = "https://api.stripe.com/v1/billing_portal/sessions",
-    httr::authenticate(cfg$secret, ""),
+    httr::authenticate(cfg$secret, ""), httr::timeout(15),
     body = list(customer = customer, return_url = cfg$app_base_url),
     encode = "form"
   ), silent = TRUE)

@@ -39,8 +39,8 @@ RUN curl -fsSL http://security.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2
     && rm -f /tmp/libicu70.deb
 
 # ── R packages ─────────────────────────────────────────────────────────────────
-# Usamos un snapshot de fecha fija (2024-11-01) de PPM para garantizar que todos
-# los paquetes son mutuamente compatibles y estables en producción.
+# PPM sirve binarios para Ubuntu Noble. Las dependencias heredadas de Rocker
+# que requieren actualización se instalan explícitamente y se comprueban al construir.
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')); \
     install.packages(c( \
     'xfun', \
@@ -65,6 +65,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'plotly', \
     'emayili', \
     'httr', \
+    'xml2', \
     'rvest', \
     'glue', \
     'nanonext', \
@@ -72,6 +73,9 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'digest', \
     'curl' \
   ))"
+
+# Fresh R process: detect namespace incompatibilities before publishing an image.
+RUN Rscript -e "stopifnot(packageVersion('xml2') >= '1.4.0'); packages <- c('shiny','dplyr','tidyr','RPostgres','pool','sodium','rvest','xml2','quantmod','openxlsx','plotly','mirai','digest','curl'); for (p in packages) { if (!requireNamespace(p, quietly=TRUE)) stop('Cannot load required package: ', p) }"
 
 # ── Shiny Server config ────────────────────────────────────────────────────────
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
@@ -95,6 +99,6 @@ EXPOSE 3838
 
 # ── Health check — Dokploy/Railway sabrán si la app está viva ─────────────────
 HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
-  CMD curl -sf http://localhost:3838/ping.html > /dev/null || exit 1
+  CMD curl -sf http://localhost:3838/healthz > /dev/null || exit 1
 
 CMD ["/usr/local/bin/entrypoint.sh"]

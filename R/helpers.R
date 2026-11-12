@@ -9,7 +9,10 @@ val_or_empty <- function(x) {
   if (is.null(x) || length(x) == 0) "" else x
 }
 `%||%` <- function(a, b) {
-  if (!is.null(a) && length(a) > 0 && !is.na(a)[1] && nzchar(as.character(a[[1]]))) a else b
+  if (is.null(a) || length(a) == 0L) return(b)
+  if (is.atomic(a) && all(is.na(a))) return(b)
+  if (is.character(a) && (is.na(a[[1]]) || !nzchar(a[[1]]))) return(b)
+  a
 }
 
 # ----------------- Valoración: Valor Intrínseco (DCF + Graham) -----------------
