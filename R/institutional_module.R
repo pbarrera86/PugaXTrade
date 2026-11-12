@@ -390,7 +390,10 @@ institutional_server <- function(id, user_reactive) {
       if (isTRUE(rv$task_running)) return()
       req(can_analyze())
       tickers <- inst_parse_tickers(input$tickers)
-      validate(need(length(tickers) <= 1500L, "El máximo por análisis es de 1500 símbolos."))
+      if (length(tickers) > 1500L) {
+        showNotification("El máximo por análisis es de 1500 símbolos.", type = "warning")
+        return()
+      }
       if (length(tickers) == 0) {
         showNotification("Ingresa al menos un ticker válido.", type = "warning")
         return()

@@ -46,6 +46,26 @@ const assert = require('node:assert/strict');
     assert.equal(page.url(), 'http://localhost:3838/');
     await page.reload();
     await signedIn.waitFor({ state: 'visible', timeout: 30000 });
+    await page.getByRole('button', { name: 'Análisis', exact: true }).click();
+    const dismissNotices = async () => {
+      for (const close of await page.locator('.shiny-notification-close').all()) await close.click();
+    };
+    const checkTickerValidation = async (field, button) => {
+      for (const [value, message] of [
+        ['', 'Ingresa al menos un ticker válido.'],
+        [Array.from({ length: 1501 }, (_, i) => `X${i}`).join(','), 'El máximo por análisis es de 1500 símbolos.'],
+      ]) {
+        await dismissNotices();
+        await field.fill(value);
+        await button.click();
+        await page.getByText(message, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+        assert.equal(await button.isEnabled(), true, 'rejected requests must not start a background task');
+      }
+    };
+    await checkTickerValidation(page.getByLabel('Tickers', { exact: true }), page.getByRole('button', { name: /Iniciar análisis$/ }));
+    await page.getByRole('link', { name: 'Extremos Locales', exact: true }).click();
+    await checkTickerValidation(page.getByLabel('Tickers a analizar (puedes escribir o pegar los que quieras)', { exact: true }), page.getByRole('button', { name: /Buscar empresas en MÍNIMOS locales/ }));
+    console.log('PASS: authenticated analysis and extremes validation; empty and oversized input rejected before jobs');
     await Promise.all([page.waitForNavigation(), signedIn.click()]);
     await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     assert.equal((await page.context().cookies()).some(item => item.name === 'puga_auth'), false);
