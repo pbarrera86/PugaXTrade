@@ -11,7 +11,7 @@ Base: `785781db8c2aacdd6ba009549da548d4de71db67`.
 4. Motor: señal retrasada un periodo y coste supuesto de 10 puntos base por cambio de posición; drawdown incluye capital inicial. Se presenta como simulación RSI, no como backtest del ranking fundamental completo.
 5. Cuenta: política de contraseña uniforme en DB, tokens de verificación con caducidad, aceptación versionada de documentos, referidos aleatorios y límites básicos de solicitudes de reset/registro. Se corrigió `shiny::hidden`, que no es el helper correcto para el formulario de reset.
 6. Sesiones: token persistente solo en cookie Secure/HttpOnly; intercambio POST con comprobación de Origin y código de un solo uso de 60 segundos; hash de tokens en DB; lectura de cookie desde la solicitud del servidor; revocación ante cambio/reset de contraseña; revalidación cada 15 segundos y antes de operaciones; expiración tras 30 minutos sin actividad humana.
-7. HTTP: login/logout/webhooks se interceptan antes del handler de UI de Shiny, que por defecto sirve GET. Se añaden no-store, no-referrer, nosniff, SAMEORIGIN y una política básica contra frames/objetos/base externos. No se presenta como una CSP completa contra XSS.
+7. HTTP: login/logout/webhooks se interceptan antes del handler de UI de Shiny, que por defecto sirve GET. Se añaden no-store, strict-origin, nosniff, SAMEORIGIN y una política básica contra frames/objetos/base externos. No se presenta como una CSP completa contra XSS.
 8. Facturación: HMAC con múltiples firmas v1 y ventana de 5 minutos; modo, precio, factura pagada, estado y periodo validados con consulta actual a Stripe; eventos, acceso y comisiones se confirman atómicamente; recuperación de pagos; protección frente a eventos de suscripciones antiguas; comisión única por usuario; idempotencia temporal de Checkout. Los eventos `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated/deleted`, `checkout.session.completed/async_payment_succeeded` deben estar habilitados en el endpoint.
 9. Correo: outbox persistente y proceso dedicado con TLS, timeout, hasta 8 intentos y bloqueo SKIP LOCKED; las credenciales SMTP no se pasan como argumentos de proceso. Los mensajes enviados eliminan su cuerpo de la cola. Debe validarse entrega real y monitorizar intentos agotados.
 
@@ -28,7 +28,7 @@ Base: `785781db8c2aacdd6ba009549da548d4de71db67`.
 - Reentrega de evento, recuperación de pago, comisión única y rollback para reintento.
 - Evento de suscripción antigua sin revocación de la actual.
 
-Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el driver RPostgreSQL disponible localmente. CI repite las pruebas con RPostgres, que es el driver de producción, y añade un build Docker con arranque y healthcheck contra PostgreSQL desechable. No se probaron pagos reales, SMTP real ni navegación completa de esta versión en Shiny. El build completo de Docker y las pruebas de staging siguen pendientes.
+Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el driver RPostgreSQL disponible localmente. CI repite las pruebas con RPostgres, que es el driver de producción, y añade un build Docker con arranque y healthcheck contra PostgreSQL desechable. CI aprobó el driver RPostgres, el build completo y el arranque de la imagen Docker (run 43112613822). Chromium comprobó que el formulario conserva Origin, rechaza un código de acceso inválido con 401 y vuelve al inicio tras logout. En staging se comprobó aceptación SMTP y vaciado del cuerpo enviado en la cola; Stripe test respondió a la consulta de precio y el webhook aceptó firma válida y rechazó firma inválida. Estas comprobaciones no equivalen a un pago Checkout completo ni a una aceptación funcional completa. La prueba ampliada de contraseña, cookie y recarga se ejecuta en el run 43247045261.
 
 ## Despliegue y reversión
 
@@ -44,7 +44,7 @@ Las pruebas SQL utilizaron PostgreSQL 17 desechable, fixtures ficticios y el dri
 
 ## Pendientes antes de aprobar comercialización
 
-- Rama publicada y PR #17 creado; pendientes resultados CI con el driver de producción, build y staging completos.
+- Rama publicada y PR #17 creado; driver de producción y build aprobados. Pendientes aceptación funcional completa de staging y respaldo/restauración antes del despliegue de producción.
 - Rol de aplicación con mínimos privilegios, separado del propietario/migrador. No se cambió el rol real ni se generaron credenciales.
 - Backups/PITR y retención de Neon confirmados, con restauración ensayada; destino S3 de Dokploy si se usará ese mecanismo.
 - Validación de entrega del reenvío de verificación, limitación por IP y observabilidad de intentos/colas. Los límites por identificador no reemplazan protección global contra abuso.
