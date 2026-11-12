@@ -28,9 +28,6 @@ const assert = require('node:assert/strict');
       page.waitForNavigation(),
       page.getByRole('button', { name: 'Entrar', exact: true }).click(),
     ]);
-    console.log('Post-login navigation:', page.url());
-    console.log('Post-login cookie flags:', (await page.context().cookies()).map(({name,httpOnly,secure,sameSite}) => ({name,httpOnly,secure,sameSite})));
-    console.log('Post-login page:', (await page.textContent('body')).slice(0, 800));
     const signedIn = page.getByRole('button', { name: 'Cerrar sesión', exact: true });
     await signedIn.waitFor({ state: 'visible', timeout: 30000 });
     const cookie = (await page.context().cookies()).find(item => item.name === 'puga_auth');

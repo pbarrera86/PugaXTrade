@@ -15,6 +15,14 @@ function pugaAuthPost(action, fields) {
   document.body.appendChild(form);
   form.submit();
 }
+Shiny.addCustomMessageHandler('restoreHttpOnlySession', function(x) {
+  // The session-specific URL carries no persistent auth token. Only the server
+  // reads the HttpOnly cookie included automatically in this same-origin POST.
+  var url = new URL(x.url, window.location.href);
+  if (url.origin !== window.location.origin) return;
+  fetch(url.href, { method: 'POST', credentials: 'same-origin', cache: 'no-store' })
+    .catch(function() { console.warn('No se pudo recuperar la sesión. Recarga la página.'); });
+});
 Shiny.addCustomMessageHandler('setHttpOnlyCookie', function(x) {
   pugaAuthPost('set-session', {code: x.code});
 });

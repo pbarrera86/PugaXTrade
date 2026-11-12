@@ -105,8 +105,7 @@ my_theme <- bs_theme(
 
 # ----------------- Lectura de cookie HttpOnly desde HTTP header -----------------
 # El browser envía automáticamente la cookie en cada request.
-# La leemos del header HTTP_COOKIE para inyectar el token en el HTML inicial
-# sin que JS pueda leer la cookie directamente (flag HttpOnly).
+# Se lee únicamente en el servidor; nunca se inyecta el token en HTML o JavaScript.
 .parse_cookie_value <- function(cookie_header, name) {
   if (is.null(cookie_header) || !nzchar(cookie_header)) return("")
   pairs <- strsplit(cookie_header, ";\\s*")[[1]]
@@ -934,6 +933,24 @@ server <- function(input, output, session) {
       session$userData$session_token(initial_tok)
     }
   }
+  # Shiny Server OSS does not forward browser cookies through its SockJS proxy.
+  # A session-specific HTTP endpoint reads HttpOnly cookies server-side instead.
+  # Its response contains no bearer token; Origin and the private session URL
+  # bind the request to this browser connection.
+  restore_session_url <- session$registerDataObj("restore-auth", NULL, function(data, req) {
+    if (!.auth_origin_ok(req)) return(.auth_response(403, "Forbidden"))
+    tok <- .parse_cookie_value(req$HTTP_COOKIE %||% "", "puga_auth")
+    u <- if (nzchar(tok)) tryCatch(db_find_user_by_token(tok), error=function(e) NULL) else NULL
+    if (!is.null(u)) {
+      session$userData$session_token(tok)
+      session$userData$current_user(u)
+    }
+    .auth_response(204, "")
+  })
+  session$onFlushed(function() {
+    session$sendCustomMessage("restoreHttpOnlySession", list(url=restore_session_url))
+  }, once=TRUE)
+
   # Revocaciones y renovaciones se reflejan en conexiones ya abiertas.
   observe({
     invalidateLater(15000, session)
