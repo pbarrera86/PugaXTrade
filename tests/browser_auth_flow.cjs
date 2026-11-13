@@ -53,7 +53,7 @@ const assert = require('node:assert/strict');
     const checkTickerValidation = async (field, button) => {
       for (const [value, message] of [
         ['', 'Ingresa al menos un ticker válido.'],
-        [Array.from({ length: 1501 }, (_, i) => `X${i}`).join(','), 'El máximo por análisis es de 1500 símbolos.'],
+        [Array.from({ length: 7301 }, (_, i) => `X${i}`).join(','), 'El máximo por análisis es de 7300 símbolos.'],
       ]) {
         await dismissNotices();
         await field.fill(value);
