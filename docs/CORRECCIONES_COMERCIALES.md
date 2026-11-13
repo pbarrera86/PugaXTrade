@@ -21,7 +21,7 @@ los cobros se comprobaron en Stripe de pruebas, sin cargos reales.
 - Correo: cola durable, TLS, reintentos y purga del cuerpo enviado. Aceptación
   SMTP validada; heartbeat del worker y alertas administrativas activos.
 - Capacidad: dos análisis simultáneos globales, uno por usuario, timeout de
-  60 minutos y recuperación de cupos vencidos. Ocho clientes SQL concurrentes
+  240 minutos (4 horas) y recuperación de cupos vencidos. Ocho clientes SQL concurrentes
   admitieron exactamente dos trabajos; dos análisis aislados y sus Excel
   terminaron correctamente y una tercera solicitud fue rechazada.
 - Producción: análisis AAPL y AMXB.MX y sus descargas Excel comprobados con el
