@@ -120,7 +120,7 @@ extremos_ui <- function(id) {
   )
 }
 
-extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = reactive(NULL)) {
+extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = reactive(NULL), activity = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -200,6 +200,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = re
     ext_current_job <- NULL
     ext_ticket <- NULL
     ext_release <- function() {
+      if (!is.null(activity)) activity$finish(ext_ticket)
       try(puga_job_release(ext_ticket), silent=TRUE)
       ext_ticket <<- NULL
     }
@@ -311,6 +312,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = re
         showNotification("Hay análisis en curso. Espera a que termine el tuyo o vuelve a intentar en unos minutos.", type="warning")
         return()
       }
+      if (!is.null(activity)) activity$start(ext_ticket)
       p <- params()
       rv$modo <- modo
       rv$prog_file <- tempfile("ext_prog_", fileext = ".txt")

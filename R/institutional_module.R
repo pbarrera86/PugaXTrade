@@ -149,7 +149,7 @@ institutional_ui <- function(id) {
   )
 }
 
-institutional_server <- function(id, user_reactive) {
+institutional_server <- function(id, user_reactive, activity = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
@@ -171,7 +171,7 @@ institutional_server <- function(id, user_reactive) {
     can_analyze <- function() db_can_analyze(user_reactive())
 
     # ---- Módulo: Screener de Extremos Locales (pestaña "Extremos Locales (QMin)") ----
-    extremos_server("ext", can_analyze = can_analyze, user_reactive = user_reactive)
+    extremos_server("ext", can_analyze = can_analyze, user_reactive = user_reactive, activity = activity)
 
     output$lock_banner_ui <- renderUI({
       u <- user_reactive()
@@ -327,6 +327,7 @@ institutional_server <- function(id, user_reactive) {
     inst_current_job <- NULL # referencia al proceso mirai en curso (para cancelar)
     inst_ticket <- NULL
     inst_release <- function() {
+      if (!is.null(activity)) activity$finish(inst_ticket)
       try(puga_job_release(inst_ticket), silent=TRUE)
       inst_ticket <<- NULL
     }
@@ -422,6 +423,7 @@ institutional_server <- function(id, user_reactive) {
         showNotification("Hay análisis en curso. Espera a que termine el tuyo o vuelve a intentar en unos minutos.", type="warning")
         return()
       }
+      if (!is.null(activity)) activity$start(inst_ticket)
       rv$prog_file <- tempfile("inst_prog_", fileext = ".txt")
       writeLines(sprintf("0|Iniciando análisis de %d tickers...", length(tickers)), rv$prog_file)
       rv$tickers_req <- tickers

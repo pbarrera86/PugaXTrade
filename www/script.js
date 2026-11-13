@@ -109,7 +109,7 @@ Shiny.addCustomMessageHandler('reset_idle', function(x) {
   $(document).on('shiny:disconnected', scheduleReload);
 })();
 
-// Human activity only: keepalive does not renew the idle deadline.
+// Human activity only: technical keepalive does not renew the idle deadline.
 (function () {
   var last = 0;
   function activity() {
@@ -117,7 +117,7 @@ Shiny.addCustomMessageHandler('reset_idle', function(x) {
     last = Date.now();
     if (window.Shiny && Shiny.setInputValue) Shiny.setInputValue('puga_activity', last, {priority:'event'});
   }
-  ['pointerdown','keydown','touchstart','scroll','puga-reset-idle'].forEach(function (event) {
-    window.addEventListener(event, activity, {passive:true});
+  ['pointerdown','pointermove','keydown','touchstart','scroll','focus','puga-reset-idle'].forEach(function (event) {
+    window.addEventListener(event, activity, {passive:true, capture:true});
   });
 })();
