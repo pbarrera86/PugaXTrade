@@ -16,7 +16,7 @@ stripe_access <- function(sub,price,now=as.numeric(Sys.time())) {
   paid_invoice <- is.list(sub$latest_invoice) && identical(sub$latest_invoice$status,"paid")
   list(matching=TRUE,active=identical(sub$status,"active") && paid_invoice && is.finite(expiry) && expiry>now,expires=expiry)
 }
-process_stripe_event <- function(event) {
+process_stripe_event <- function(event, reconcile=FALSE) {
   supported <- c("checkout.session.completed","checkout.session.async_payment_succeeded","invoice.paid",
     "invoice.payment_failed","customer.subscription.updated","customer.subscription.deleted")
   if (!event$type %in% supported) return(FALSE)
@@ -28,12 +28,19 @@ process_stripe_event <- function(event) {
   .with_conn({
     DBI::dbWithTransaction(con, {
       DBI::dbGetQuery(con,"SELECT pg_advisory_xact_lock(hashtext($1))",params=list(sid))
-      done <- DBI::dbGetQuery(con,"SELECT 1 FROM stripe_events WHERE event_id=$1",params=list(event$id))
+      done <- if(reconcile) data.frame() else DBI::dbGetQuery(con,"SELECT 1 FROM stripe_events WHERE event_id=$1",params=list(event$id))
       if (nrow(done)) FALSE else {
         sub <- stripe_fetch_subscription(sid)
+        if(reconcile && (!identical(sub$id,sid) || !is.logical(sub$livemode) || length(sub$livemode)!=1L ||
+            !identical(sub$livemode,startsWith(Sys.getenv("STRIPE_SECRET_KEY"),"sk_live_")))) stop("Subscription identity or mode mismatch")
+        # Reconciliation uses the fresh invoice, never a synthetic payment assertion.
+        if(reconcile) o <- sub$latest_invoice
         a <- stripe_access(sub,Sys.getenv("STRIPE_PRICE_ID"))
-        if (a$matching) {
+        linked <- if(reconcile) DBI::dbGetQuery(con,"SELECT id FROM users WHERE stripe_subscription_id=$1",params=list(sid)) else data.frame()
+        if(nrow(linked)>1L) stop("Subscription linked to multiple users")
+        if (a$matching || (reconcile && nrow(linked)==1L)) {
           uid <- sub$metadata$user_id %||% if(startsWith(event$type,"checkout.")) o$client_reference_id else NULL
+          if(reconcile && nrow(linked)==1L && !is.null(uid) && !identical(tolower(uid),tolower(linked$id[[1]]))) stop("Subscription user mismatch")
           if (!is.null(uid) && !grepl("^[a-fA-F0-9-]{36}$",uid)) stop("Invalid user reference")
           u <- if(is.null(uid)) DBI::dbGetQuery(con,"SELECT * FROM users WHERE stripe_subscription_id=$1 FOR UPDATE",params=list(sid)) else
             DBI::dbGetQuery(con,"SELECT * FROM users WHERE id=$1 FOR UPDATE",params=list(uid))
@@ -55,7 +62,7 @@ process_stripe_event <- function(event) {
               membership_activated_at=CASE WHEN $5 THEN coalesce(membership_activated_at,now()) ELSE membership_activated_at END,
               trial_expires_at=CASE WHEN $5 THEN NULL ELSE trial_expires_at END WHERE id=$7",
               params=list(stripe_id(sub$customer),sid,sub$status,isTRUE(sub$cancel_at_period_end),active,format(expiry,"%Y-%m-%d %H:%M:%OS%z",tz="UTC"),u$id[[1]]))
-            paid <- isTRUE(a$active) && ((identical(event$type,"invoice.paid") && as.numeric(o$amount_paid %||% 0)>0) ||
+            paid <- isTRUE(a$active) && (((reconcile || identical(event$type,"invoice.paid")) && as.numeric(o$amount_paid %||% 0)>0) ||
               (startsWith(event$type,"checkout.") && identical(o$payment_status,"paid") && as.numeric(o$amount_total %||% 0)>0))
             ref <- u$referred_by[[1]]
             if(paid && !is.na(ref) && nzchar(ref) && !identical(ref,u$id[[1]])) {
@@ -71,7 +78,7 @@ process_stripe_event <- function(event) {
             }
           }
         }
-        DBI::dbExecute(con,"INSERT INTO stripe_events(event_id,event_type,subscription_id) VALUES($1,$2,$3)",params=list(event$id,event$type,sid))
+        if(!reconcile) DBI::dbExecute(con,"INSERT INTO stripe_events(event_id,event_type,subscription_id) VALUES($1,$2,$3)",params=list(event$id,event$type,sid))
         TRUE
       }
     })

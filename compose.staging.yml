@@ -66,6 +66,28 @@ services:
     healthcheck:
       disable: true
     networks: [database, outbound]
+  billing-worker:
+    image: pugaxtrade-staging:local
+    restart: unless-stopped
+    init: true
+    working_dir: /srv/shiny-server/app
+    command: ["Rscript", "scripts/billing_worker.R"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: puga_staging
+      PGUSER: puga_staging
+      PGPASSWORD: ${STAGING_DB_PASSWORD:?Set a unique staging database password}
+      PGSSLMODE: disable
+      STRIPE_SECRET_KEY: ${STAGING_STRIPE_SECRET_KEY:-}
+      STRIPE_PRICE_ID: ${STAGING_STRIPE_PRICE_ID:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks: [database, outbound]
+
 volumes:
   staging_database:
 networks:
