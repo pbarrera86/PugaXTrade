@@ -8,14 +8,14 @@ now <- 1801
 check(activity$idle()>1800,"session expires only after more than 30 idle minutes")
 activity$touch();now <- 3000
 activity$start("accepted_analysis")
-now <- 6599
-check(activity$idle()==0,"analysis still keeps session active just before the one-hour timeout")
+now <- 3000 + 4*60*60 - 1
+check(activity$idle()==0,"analysis still keeps session active just before the four-hour timeout")
 activity$finish("accepted_analysis")
-now <- 8399
+now <- now + 1800
 check(activity$idle()==1800,"full idle allowance starts after analysis completion")
-now <- 8400
+now <- now + 1
 check(activity$idle()>1800,"completed analysis cannot keep session alive forever")
-activity$start("extremes");now <- 8500;activity$finish("extremes")
+activity$start("extremes");now <- now + 100;activity$finish("extremes")
 check(activity$idle()==0,"cancellation or error resets inactivity from task completion")
 activity$start("stalled");now <- now + puga_job_lease_seconds + 1801
 check(activity$idle()>1800,"expired analysis lease cannot prevent inactivity logout")

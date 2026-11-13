@@ -283,7 +283,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = re
       ext_release()
       rv$status <- "error"
       message("[Extremes] Worker failed: ", err)
-      rv$msg <- "No se pudo completar la búsqueda. Si alcanzó 60 minutos, reduce la lista de símbolos e intenta de nuevo."
+      rv$msg <- "No se pudo completar la búsqueda. Si alcanzó 4 horas, reduce la lista de símbolos e intenta de nuevo."
       showNotification(rv$msg, type = "error", duration = 10)
       set_busy(FALSE)
     }

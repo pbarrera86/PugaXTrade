@@ -60,4 +60,4 @@ source("R/job_capacity.R")
 check(puga_ticker_count_allowed(sprintf("X%d",1:7300)),"7300 tickers accepted at request boundary")
 check(!puga_ticker_count_allowed(sprintf("X%d",1:7301)),"7301 tickers rejected at request boundary")
 
-check(puga_job_timeout_ms==3600000L,"analysis timeout is one hour")
+check(puga_job_timeout_ms==14400000L,"analysis timeout is four hours")

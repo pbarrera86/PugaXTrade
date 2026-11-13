@@ -6,7 +6,7 @@ y `puga_ticker_count_allowed` en `R/job_capacity.R`; una lista superior se recha
 antes de adquirir un cupo o iniciar un proceso.
 
 La ampliación del límite de entrada no cambia la concurrencia global (dos
-trabajos, uno por usuario), la memoria asignada ni el timeout de 60 minutos.
+trabajos, uno por usuario), la memoria asignada ni el timeout de 240 minutos (4 horas).
 Los proveedores de datos y la caché determinan la duración real; una lista grande
 sin caché puede superar ese tiempo. No se acredita aquí una prueba de carga
 completa de 7,300 cotizaciones contra servicios externos.
