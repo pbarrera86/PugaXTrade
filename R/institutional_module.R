@@ -405,8 +405,8 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       if (isTRUE(rv$task_running)) return()
       req(can_analyze())
       tickers <- inst_parse_tickers(input$tickers)
-      if (length(tickers) > 1500L) {
-        showNotification("El máximo por análisis es de 1500 símbolos.", type = "warning")
+      if (!puga_ticker_count_allowed(tickers)) {
+        showNotification(sprintf("El máximo por análisis es de %d símbolos.", puga_max_tickers), type = "warning")
         return()
       }
       if (length(tickers) == 0) {

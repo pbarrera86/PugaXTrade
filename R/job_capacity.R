@@ -1,3 +1,6 @@
+puga_max_tickers <- 7300L
+puga_ticker_count_allowed <- function(tickers) length(tickers) <= puga_max_tickers
+
 # Shared across Shiny processes and both analysis modules; compatible with
 # transaction-pooling PostgreSQL endpoints. Worker timeout precedes lease expiry.
 puga_job_timeout_ms <- 1200000L

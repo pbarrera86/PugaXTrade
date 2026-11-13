@@ -156,7 +156,7 @@ extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = re
 
     output$count_ui <- renderUI({
       n <- length(parse_ticks(input$tickers))
-      div(class = "text-muted", style = "margin:-6px 0 10px 0; font-size:.9em;", sprintf("%d tickers en la lista", n))
+      div(class = "text-muted", style = "margin:-6px 0 10px 0; font-size:.9em;", sprintf("%d tickers en la lista (máximo %d)", n, puga_max_tickers))
     })
 
     observeEvent(input$add_btn, {
@@ -295,8 +295,8 @@ extremos_server <- function(id, can_analyze = reactive(TRUE), user_reactive = re
         return()
       }
       ticks <- parse_ticks(input$tickers)
-      if (length(ticks) > 1500L) {
-        showNotification("El máximo por análisis es de 1500 símbolos.", type = "warning")
+      if (!puga_ticker_count_allowed(ticks)) {
+        showNotification(sprintf("El máximo por análisis es de %d símbolos.", puga_max_tickers), type = "warning")
         return()
       }
       if (length(ticks) == 0) {

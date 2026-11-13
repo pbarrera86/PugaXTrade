@@ -55,3 +55,7 @@ check(router(list(PATH_INFO="/",REQUEST_METHOD="GET"))$content=="ui","normal UI 
 check(router(list(PATH_INFO="/auth/logout",REQUEST_METHOD="POST"))$headers$`Cache-Control`=="no-store","authentication responses never cached")
 
 cat("REGRESSION SUITE OK\n")
+
+source("R/job_capacity.R")
+check(puga_ticker_count_allowed(sprintf("X%d",1:7300)),"7300 tickers accepted at request boundary")
+check(!puga_ticker_count_allowed(sprintf("X%d",1:7301)),"7301 tickers rejected at request boundary")
