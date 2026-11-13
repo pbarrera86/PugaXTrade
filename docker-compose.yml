@@ -96,6 +96,38 @@ services:
     networks:
       - dokploy-network
 
+  billing-worker:
+    image: pugaxtrade:latest
+    restart: unless-stopped
+    init: true
+    mem_limit: 512m
+    cpus: 0.25
+    pids_limit: 64
+    working_dir: /srv/shiny-server/app
+    command: ["Rscript", "scripts/billing_worker.R"]
+    environment:
+      PGHOST: ${PGHOST}
+      PGPORT: ${PGPORT}
+      PGDATABASE: ${PGDATABASE}
+      PGUSER: ${PGUSER}
+      PGPASSWORD: ${PGPASSWORD}
+      PGSSLMODE: ${PGSSLMODE}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      DEFAULT_REFERRER_USERNAME: ${DEFAULT_REFERRER_USERNAME}
+      REFERRAL_COMMISSION_AMOUNT: ${REFERRAL_COMMISSION_AMOUNT:-9.00}
+    depends_on:
+      pugaxtrade:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -n \"$$(find /tmp/puga-billing-worker-heartbeat -mmin -12 -print -quit 2>/dev/null)\""]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
+    networks: [dokploy-network]
+
 volumes:
   shiny_logs:
 

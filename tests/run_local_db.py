@@ -25,7 +25,11 @@ with tempfile.TemporaryDirectory(prefix="pgtest_", dir=base) as directory:
     with open(base / "integration-postgres.log", "w") as log:
         proc = subprocess.Popen([str(bins / "postgres"), "-D", directory, "-k", "", "-h", "127.0.0.1", "-p", "55432"], env=env, stdout=log, stderr=log)
         try:
-            time.sleep(1)
+            deadline = time.monotonic() + 30
+            while subprocess.run([str(bins / "pg_isready"), "-h", "127.0.0.1", "-p", "55432", "-U", "agent", "-d", "postgres"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+                if proc.poll() is not None or time.monotonic() > deadline:
+                    raise RuntimeError("Disposable PostgreSQL did not become ready")
+                time.sleep(0.25)
             subprocess.run([str(bins / "psql"), "-h", "127.0.0.1", "-p", "55432", "-U", "agent", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-f", "schema.sql", "-f", "tests/migration_seed.sql", "-f", "migrations/001_commercial_security.sql", "-f", "migrations/002_analysis_capacity.sql"], env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([str(root / "usr/lib/R/bin/exec/R"), "--vanilla", "--slave", "-f", "tests/regression.R"], env=env, check=True)
             subprocess.run([str(root / "usr/lib/R/bin/exec/R"), "--vanilla", "--slave", "-f", "tests/database.R"], env=env, check=True)

@@ -85,6 +85,7 @@ stripe_fetch_subscription <- function(id) {
 event$id <- "evt_old"; event$type <- "customer.subscription.deleted";event$data$object$id <- "sub_old"
 process_stripe_event(event)
 check(query("SELECT membership_active FROM users WHERE id=$1",uid)$membership_active[[1]],"old subscription cannot revoke current access")
+source("tests/billing_reconciliation.R")
 if(.Platform$OS.type=="unix") {
   handoff <- db_create_login_handoff(uid)
   connect <- function() DBI::dbConnect(if(test_driver=="RPostgres") RPostgres::Postgres() else RPostgreSQL::PostgreSQL(),host="127.0.0.1",port=55432,dbname="postgres",user="agent")
