@@ -162,6 +162,7 @@ my_theme <- bs_theme(
 source("R/helpers.R", encoding = "UTF-8")
 source("R/db.R", encoding = "UTF-8") # pool + helpers Postgres
 source("R/security.R", encoding = "UTF-8")
+source("R/session_activity.R", encoding = "UTF-8")
 source("R/job_capacity.R", encoding = "UTF-8")
 source("R/finance_core.R", encoding = "UTF-8") # ANÁLISIS + Excel
 source("R/institutional_core.R", encoding = "UTF-8")
@@ -418,7 +419,7 @@ main_ui <- function(id) {
 }
 
 # ----------------- Pantallas de autenticación -----------------
-main_module <- function(id, user_reactive, on_logout = function() {}) {
+main_module <- function(id, user_reactive, on_logout = function() {}, activity = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     section <- reactiveVal("analysis")
@@ -431,7 +432,7 @@ main_module <- function(id, user_reactive, on_logout = function() {}) {
     # Usamos try para evitar crashes si la versión de Shiny es muy antigua
     # Inicializar módulos independientes
     # Solo módulo institucional — el estándar fue eliminado
-    institutional_server("inst", user_reactive = user_reactive)
+    institutional_server("inst", user_reactive = user_reactive, activity = activity)
 
 
     # ---- Estado de acceso validado contra DB antes de cada acción ----
@@ -910,6 +911,7 @@ ui <- function(req) {
 # Schema changes run at deployment time, never under the interactive role.
 
 server <- function(input, output, session) {
+  activity <- puga_session_activity()
   session$userData$current_user <- reactiveVal(NULL)
   session$userData$session_token <- reactiveVal(NULL)
 
@@ -946,7 +948,9 @@ server <- function(input, output, session) {
     invalidateLater(15000, session)
     tok <- isolate(session$userData$session_token())
     if (is.null(tok)) return()
-    fresh <- db_current_session_user(session)
+    lookup <- db_session_status(tok)
+    if (identical(lookup$status,"unavailable")) return() # Retry; never erase a cookie for a transport error.
+    fresh <- lookup$user
     old <- isolate(session$userData$current_user())
     if (!identical(fresh,old)) session$userData$current_user(fresh)
     if (is.null(fresh)) {
@@ -1006,29 +1010,32 @@ server <- function(input, output, session) {
     session$userData$current_user() # establece dependencia reactiva
     db_current_session_user(session) # datos actuales antes de cada acción
   }
-  main_module("main", user_reactive = user_reactive, on_logout = function() {
+  main_module("main", user_reactive = user_reactive, activity = activity, on_logout = function() {
     session$userData$current_user(NULL)
   })
 
-  last_activity <- reactiveVal(Sys.time())
   idle_warned <- reactiveVal(FALSE)
   observeEvent(input$puga_activity, {
     if (!is.null(session$userData$current_user())) {
-      last_activity(Sys.time())
+      activity$touch()
       if (isTRUE(idle_warned())) removeModal()
       idle_warned(FALSE)
     }
   })
   observeEvent(input$mb_keep_alive, {
-    last_activity(Sys.time())
+    activity$touch()
     idle_warned(FALSE)
     removeModal()
   })
   observe({
     invalidateLater(15000,session)
     if (is.null(isolate(session$userData$current_user()))) return()
-    idle <- as.numeric(difftime(Sys.time(),isolate(last_activity()),units="secs"))
-    if (idle >= 1800) {
+    idle <- activity$idle()
+    if (idle < 1500 && isTRUE(isolate(idle_warned()))) {
+      idle_warned(FALSE)
+      removeModal()
+    }
+    if (idle > 1800) {
       tok <- isolate(session$userData$session_token())
       if (!is.null(tok)) try(db_delete_token(tok),silent=TRUE)
       session$userData$current_user(NULL)

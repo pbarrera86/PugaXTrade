@@ -5,6 +5,15 @@ auth_valid_password <- function(password) {
   is.character(password) && length(password) == 1L && !is.na(password) && nchar(password) >= 8L && nchar(password, type = "bytes") <= 1024L
 }
 
+# An unavailable database is not evidence that a session was revoked.
+# Protected operations still fail closed through db_current_session_user().
+db_session_status <- function(token) {
+  tryCatch({
+    user <- db_find_user_by_token(token)
+    list(status=if(is.null(user)) "invalid" else "valid",user=user)
+  },error=function(e) list(status="unavailable",user=NULL))
+}
+
 db_current_session_user <- function(session) {
   tok <- shiny::isolate(session$userData$session_token())
   if (is.null(tok) || !nzchar(tok)) return(NULL)
