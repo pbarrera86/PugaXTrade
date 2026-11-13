@@ -8,9 +8,9 @@ heartbeat técnico no cuenta como interacción humana.
 Un trabajo admitido de análisis institucional o extremos mantiene activa la
 sesión aunque el usuario espere sin tocar la página. Al terminar, fallar o
 cancelarse empieza un nuevo plazo de 30 minutos. Un trabajo bloqueado no puede
-mantenerla indefinidamente: el reloj respeta el límite de su lease de 21 minutos,
-posterior al timeout de cálculo de 20 minutos. No se aumenta el timeout de los
-análisis ni la cantidad de trabajos simultáneos.
+mantenerla indefinidamente: el reloj respeta el límite de su lease de 61 minutos,
+posterior al timeout de cálculo de 60 minutos. El análisis tiene un máximo de una hora; no cambia la cantidad de trabajos
+simultáneos.
 
 Se conserva el aviso a los 25 minutos, con botón para continuar, y el cierre
 manual de sesión. La revocación real, desactivación de cuenta y caducidad del

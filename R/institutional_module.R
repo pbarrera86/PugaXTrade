@@ -396,7 +396,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       inst_release()
       rv$status <- "error"
       message("[Analysis] Worker failed: ", err)
-      rv$progress_msg <- "No se pudo completar el análisis. Si alcanzó 20 minutos, reduce la lista de símbolos e intenta de nuevo."
+      rv$progress_msg <- "No se pudo completar el análisis. Si alcanzó 60 minutos, reduce la lista de símbolos e intenta de nuevo."
       showNotification(rv$progress_msg, type = "error", duration = 10)
       inst_set_busy(FALSE)
     }
