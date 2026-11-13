@@ -24,7 +24,7 @@ planes, cancela ni reactiva suscripciones en Stripe.
   `stripe_events` ni cambia la deduplicación de los webhooks reales.
 - Un fallo de red o respuesta inválida no se interpreta como cancelación ni
   pago: conserva el estado anterior de esa suscripción y registra el error.
-- Un bloqueo global de PostgreSQL impide dos barridos simultáneos. Cada barrido
+- Un bloqueo global transaccional de PostgreSQL (compatible con poolers) impide dos barridos simultáneos. Cada barrido
   admite hasta 100 páginas y un presupuesto de 240 segundos, comprobado entre
   peticiones; cada GET tiene timeout de 15 segundos. Una flota que supere ese
   presupuesto requiere revisar la estrategia antes de aumentar límites.

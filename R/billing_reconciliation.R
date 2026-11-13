@@ -20,17 +20,17 @@ stripe_reconcile_once <- function(budget_seconds=240,max_pages=100L) {
   budget <- function() {
     if(as.numeric(difftime(Sys.time(),started,units="secs"))>budget_seconds) stop("Reconciliation time budget exceeded")
   }
-  # Keep this connection checked out until the session lock is released.
-  .with_conn({
-    acquired <- DBI::dbGetQuery(con,"SELECT pg_try_advisory_lock(hashtext('puga-stripe-reconciliation-v1')) AS acquired")$acquired[[1]]
-    if(!isTRUE(acquired)) return(invisible(list(skipped=TRUE)))
-    tryCatch({
+  # A transaction-scoped lock also works through transaction-pooling proxies.
+  .with_conn(DBI::dbWithTransaction(con, {
+    acquired <- DBI::dbGetQuery(con,"SELECT pg_try_advisory_xact_lock(hashtext('puga-stripe-reconciliation-v1')) AS acquired")$acquired[[1]]
+    if(!isTRUE(acquired)) list(skipped=TRUE) else {
       stripe_reconciliation_check(FALSE,"Reconciliación de Stripe en curso; revisar si no termina.")
       users <- DBI::dbGetQuery(con,"SELECT id,stripe_subscription_id FROM users")
       known <- unique(users$stripe_subscription_id[!is.na(users$stripe_subscription_id) & nzchar(users$stripe_subscription_id)])
       seen <- character(); checked <- 0L; failed <- 0L
       apply_one <- function(sid) {
         budget()
+        DBI::dbGetQuery(con,"SELECT 1") # Keep the lock transaction alive during remote reads.
         if(!grepl("^sub_[A-Za-z0-9]+$",sid)) {failed <<- failed+1L; return(invisible(NULL))}
         tryCatch({
           process_stripe_event(list(type="customer.subscription.updated",livemode=startsWith(key,"sk_live_"),
@@ -43,6 +43,7 @@ stripe_reconcile_once <- function(budget_seconds=240,max_pages=100L) {
       cursor <- NULL; complete <- FALSE
       for(page_number in seq_len(max_pages)) {
         budget()
+        DBI::dbGetQuery(con,"SELECT 1")
         page <- stripe_list_subscriptions(cursor)
         if(!is.list(page$data) || !is.logical(page$has_more) || length(page$has_more)!=1L) stop("Invalid subscription page")
         ids <- vapply(page$data,function(s) s$id %||% "",character(1))
@@ -60,6 +61,6 @@ stripe_reconcile_once <- function(budget_seconds=240,max_pages=100L) {
         sprintf("Reconciliación de Stripe correcta: %d suscripciones comprobadas.",checked)
       stripe_reconciliation_check(failed==0L,detail)
       list(skipped=FALSE,checked=checked,failed=failed)
-    },finally=DBI::dbGetQuery(con,"SELECT pg_advisory_unlock(hashtext('puga-stripe-reconciliation-v1'))"))
-  })
+    }
+  }))
 }

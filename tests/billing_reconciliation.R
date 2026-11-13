@@ -1,5 +1,13 @@
 # Included by database.R against the disposable database, never production.
 source("R/billing_reconciliation.R")
+# Match production checkout semantics: nested operations use distinct connections.
+saved_with_conn <- .with_conn
+.with_conn <- function(expr) {
+  connection <- DBI::dbConnect(if(test_driver=="RPostgres") RPostgres::Postgres() else RPostgreSQL::PostgreSQL(),host="127.0.0.1",port=55432,dbname="postgres",user="agent")
+  on.exit(DBI::dbDisconnect(connection))
+  env <- new.env(parent=parent.frame());env$con <- connection
+  eval(substitute(expr),env)
+}
 subscription$livemode <- FALSE
 subscription$latest_invoice <- list(id="in_fixture",status="paid",amount_paid=2999)
 third <- "00000000-0000-0000-0000-000000000040"
@@ -72,4 +80,5 @@ if(.Platform$OS.type=="unix") {
   DBI::dbGetQuery(con,"SELECT pg_advisory_unlock(hashtext('puga-stripe-reconciliation-v1'))")
   check(isTRUE(blocked),"concurrent reconciliation skips locked sweep")
 }
+.with_conn <- saved_with_conn
 cat("BILLING RECONCILIATION SUITE OK\n")
