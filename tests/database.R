@@ -123,6 +123,7 @@ if(.Platform$OS.type=="unix") {
   },mc.cores=8)
   check(sum(!vapply(results,is.null,logical(1)))==2L,"eight concurrent requests admit exactly two analysis jobs")
   check(query("SELECT count(*) AS n FROM analysis_jobs")$n[[1]]==2L,"capacity shared across connections")
+  check(all(abs(query("SELECT extract(epoch FROM (expires_at-started_at)) AS lease_seconds FROM analysis_jobs")$lease_seconds-3660)<1),"database job lease lasts 61 minutes")
   occupied <- query("SELECT user_id,token FROM analysis_jobs LIMIT 1")
   check(is.null(puga_job_acquire(occupied$user_id[[1]])),"same user cannot start a second job")
   puga_job_release(occupied$token[[1]])

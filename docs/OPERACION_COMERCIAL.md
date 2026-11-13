@@ -5,8 +5,8 @@
 La admisión de análisis se comparte en PostgreSQL entre procesos y módulos:
 dos trabajos simultáneos en total y uno por usuario. Si no hay cupo se muestra
 una advertencia; no se inicia otro proceso ni se mantiene una cola ilimitada.
-Los procesos mirai tienen un máximo de 20 minutos; los cupos abandonados
-caducan a los 21 minutos. Al terminar, cancelar o cerrar la sesión se libera el
+Los procesos mirai tienen un máximo de 60 minutos; los cupos abandonados
+caducan a los 61 minutos. Al terminar, cancelar o cerrar la sesión se libera el
 cupo. Los datos permanecen sujetos a la vigencia de la caché.
 
 La prueba aislada de ocho clientes concurrentes verifica la admisión, el rechazo

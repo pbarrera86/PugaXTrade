@@ -1,3 +1,4 @@
+source("R/job_capacity.R")
 source("R/session_activity.R")
 now <- 0
 activity <- puga_session_activity(function() now)
@@ -7,16 +8,16 @@ now <- 1801
 check(activity$idle()>1800,"session expires only after more than 30 idle minutes")
 activity$touch();now <- 3000
 activity$start("accepted_analysis")
-now <- 4200
-check(activity$idle()==0,"accepted analysis keeps session active without browser interaction")
+now <- 6599
+check(activity$idle()==0,"analysis still keeps session active just before the one-hour timeout")
 activity$finish("accepted_analysis")
-now <- 6000
+now <- 8399
 check(activity$idle()==1800,"full idle allowance starts after analysis completion")
-now <- 6001
+now <- 8400
 check(activity$idle()>1800,"completed analysis cannot keep session alive forever")
-activity$start("extremes");now <- 6100;activity$finish("extremes")
+activity$start("extremes");now <- 8500;activity$finish("extremes")
 check(activity$idle()==0,"cancellation or error resets inactivity from task completion")
-activity$start("stalled");now <- 9200
+activity$start("stalled");now <- now + puga_job_lease_seconds + 1801
 check(activity$idle()>1800,"expired analysis lease cannot prevent inactivity logout")
 activity$finish(NULL)
 check(activity$idle()>1800,"empty cleanup does not renew the idle deadline")
