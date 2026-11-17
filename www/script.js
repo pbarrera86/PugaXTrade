@@ -71,7 +71,7 @@ Shiny.addCustomMessageHandler('reset_idle', function(x) {
     d.id = 'pugax-reconnect';
     d.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99999;background:#1f2937;color:#fff;' +
       'padding:12px 16px;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.4);font-weight:600;';
-    d.innerHTML = '&#x21bb; Se perdió la conexión. Reconectando automáticamente...';
+    d.innerHTML = '&#x21bb; Se perdió la conexión. Reconectando; el análisis de Dashboard y su avance permanecen guardados...';
     document.body.appendChild(d);
   }
   function reloadNow() {

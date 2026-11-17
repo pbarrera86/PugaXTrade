@@ -2140,7 +2140,7 @@ run_backtest <- function(history_df, cost_bps = 10) {
 # 9) PIPELINE
 # =========================================================
 
-inst_run_pipeline <- function(tickers, investor_profile = "Balanceado", use_postgres_cache = FALSE, progress_cb = NULL) {
+inst_run_pipeline <- function(tickers, investor_profile = "Balanceado", use_postgres_cache = FALSE, progress_cb = NULL, checkpoint_cb = NULL) {
   tickers <- inst_parse_tickers(paste(tickers, collapse = ","))
   if (length(tickers) == 0) {
     return(list(
@@ -2161,7 +2161,7 @@ inst_run_pipeline <- function(tickers, investor_profile = "Balanceado", use_post
   # Los tickers se procesan uno a uno para poder reportar el avance real
   # (de 10% a 90%) al módulo, que lo muestra en la barra de progreso.
   if (is.function(progress_cb)) progress_cb(msg = "Descargando datos de mercado base (SPY)...", pct = 5)
-  spy_data <- .get_spy_history()
+  spy_data <- if (is.function(checkpoint_cb)) checkpoint_cb(0L, .get_spy_history) else .get_spy_history()
 
   res_list <- vector("list", n)
   for (k in seq_len(n)) {
@@ -2170,7 +2170,7 @@ inst_run_pipeline <- function(tickers, investor_profile = "Balanceado", use_post
       progress_cb(msg = sprintf("Analizando %s (%d de %d)", tk, k, n), pct = 10 + floor(80 * (k - 1) / n))
     }
     # Un ticker con error no detiene el análisis completo
-    res_list[k] <- list(tryCatch(
+    compute <- function() tryCatch(
       analyze_one_ticker(
         ticker = tk,
         investor_profile = investor_profile,
@@ -2182,7 +2182,8 @@ inst_run_pipeline <- function(tickers, investor_profile = "Balanceado", use_post
         message("[INST] Error en ", tk, ": ", conditionMessage(e))
         NULL
       }
-    ))
+    )
+    res_list[k] <- list(if (is.function(checkpoint_cb)) checkpoint_cb(k, compute) else compute())
   }
   ok <- !vapply(res_list, function(r) is.null(r) || is.null(r$summary), logical(1))
   if (!any(ok)) stop("No se pudo analizar ningún ticker. Verifica los símbolos o la conexión con las fuentes de datos.")

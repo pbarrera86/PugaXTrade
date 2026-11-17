@@ -27,6 +27,9 @@ log "Configurando variables de entorno..."
 
 # Crear directorios necesarios
 mkdir -p "$APP_DIR" "$LOG_DIR" "$APP_CACHE_DIR" "$R_ENV_DIR" "/srv/shiny-server"
+mkdir -p "${PUGA_ANALYSIS_DIR:-/var/lib/pugaxtrade/analysis}"
+chown shiny:shiny "${PUGA_ANALYSIS_DIR:-/var/lib/pugaxtrade/analysis}"
+chmod 0700 "${PUGA_ANALYSIS_DIR:-/var/lib/pugaxtrade/analysis}"
 
 # Capturar variables filtradas una sola vez
 FILTERED_ENV="$(env | grep -E "$ENV_FILTER" || true)"

@@ -62,6 +62,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production image
         run: docker build --tag pugaxtrade:ci .
+      - name: Verify analysis recovery after process termination
+        run: docker run --rm --entrypoint Rscript -w /srv/shiny-server/app pugaxtrade:ci tests/analysis_process_recovery.R
       - name: Start application with disposable database
         run: |
           docker run -d --name puga-ci --network host \

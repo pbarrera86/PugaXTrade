@@ -42,6 +42,7 @@ institutional_ui <- function(id) {
               ),
               fluidRow(
                 column(6, actionButton(ns("run_btn"), "Iniciar análisis", icon = icon("play"), class = "btn-success w-100", style = "margin-bottom: 10px;"),
+                       shinyjs::hidden(actionButton(ns("resume_btn"), "Retomar análisis guardado", icon = icon("rotate-right"), class = "btn-info w-100", style = "margin-bottom:10px;")),
                        shinyjs::hidden(actionButton(ns("cancel_btn"), "Cancelar análisis", icon = icon("stop"), class = "btn-danger w-100", style = "margin-bottom: 10px;"))),
                 column(6, actionButton(ns("reset_btn"), "Restaurar Tickers", icon = icon("rotate-left"), class = "btn-secondary w-100", style = "margin-bottom: 10px;"))
               ),
@@ -51,8 +52,9 @@ institutional_ui <- function(id) {
               ),
               br(),
               uiOutput(ns("progress_ui")),
+              p(class="text-muted", "El avance y el resultado de tu último análisis se guardan durante 7 días. Al reconectar se recuperan automáticamente; iniciar otro análisis sustituye al anterior."),
               textOutput(ns("data_timestamp")),
-              actionButton(ns("clear_cache_btn"), "Limpiar resultados de esta sesión", class = "btn-secondary w-100", icon = icon("trash"))
+              actionButton(ns("clear_cache_btn"), "Eliminar análisis guardado", class = "btn-secondary w-100", icon = icon("trash"))
             )
           )
         ),
@@ -115,6 +117,7 @@ institutional_ui <- function(id) {
             div(
               class = "card p-3 mb-4",
               h4("Matriz de Correlación"),
+              p(class="text-muted", "La gráfica muestra hasta 100 empresas mejor clasificadas para mantener la pantalla ágil. El análisis conserva todos los tickers."),
               plotlyOutput(ns("cor_plot"), height = "450px")
             )
           )
@@ -229,15 +232,8 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
             `aria-valuenow` = pct, `aria-valuemin` = 0, `aria-valuemax` = 100, label))
       }
       if (identical(st, "running")) {
-        invalidateLater(700)
-        ln <- tryCatch(readLines(rv$prog_file, warn = FALSE)[1], error = function(e) NA_character_)
-        pct <- 0L; msg <- "Preparando análisis..."
-        if (!is.na(ln) && nzchar(ln)) {
-          parts <- strsplit(ln, "|", fixed = TRUE)[[1]]
-          p <- suppressWarnings(as.integer(parts[1]))
-          if (!is.na(p)) pct <- max(0L, min(99L, p))
-          if (length(parts) >= 2) msg <- paste(parts[-1], collapse = "|")
-        }
+        pct <- rv$progress
+        msg <- rv$progress_msg
         seg <- round(as.numeric(difftime(Sys.time(), rv$started, units = "secs")))
         return(tagList(
           div(style = "font-weight:600; margin-top:8px;", icon("spinner", class = "fa-spin"),
@@ -275,93 +271,35 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     observeEvent(input$clear_cache_btn, {
       req(can_analyze())
       if (isTRUE(rv$task_running)) return()
+      puga_analysis_clear(user_reactive()$id[[1]])
+      attached_path <<- NULL
       rv$result <- NULL
       rv$results <- NULL
       if (!is.null(rv$wb_path)) unlink(rv$wb_path)
       rv$wb_path <- NULL
       rv$status <- "idle"
       rv$progress_msg <- "Esperando análisis..."
-      showNotification("Resultados de esta sesión eliminados.", type = "message")
+      shinyjs::hide("resume_btn")
+      showNotification("Análisis guardado eliminado.", type = "message")
     })
 
-    # ---- Tarea en segundo plano para el Análisis Institucional ----
-    # Corre en un proceso R independiente (mirai) para que la sesión siga
-    # respondiendo y la barra de avance se actualice en vivo. Si mirai no está
-    # disponible se usa future como respaldo.
-    inst_worker_job <- function(app_dir, ticks, perf, use_pg, prog_file) {
-      setwd(app_dir)
-      suppressWarnings(suppressMessages({
-        library(future)
-        library(dplyr)
-        library(httr)
-        library(rvest)
-        library(xml2)
-        library(quantmod)
-        library(TTR)
-        library(plotly)
-        library(openxlsx)
-      }))
-      future::plan(future::sequential)
-      write_prog <- function(pct, msg) try(writeLines(sprintf("%d|%s", as.integer(pct), msg), prog_file), silent = TRUE)
-      write_prog(1, "Cargando módulos de análisis...")
-      source("R/db.R", local = TRUE)
-      source("R/finance_core.R", local = TRUE)
-      source("R/institutional_core.R", local = TRUE)
-      on.exit(
-        {
-          if (exists("pool_close", mode = "function")) try(pool_close(), silent = TRUE)
-          if (exists("pg_pool_global") && !is.null(get("pg_pool_global"))) {
-            try(pool::poolClose(get("pg_pool_global")), silent = TRUE)
-          }
-        },
-        add = TRUE
-      )
-      inst_run_pipeline(
-        tickers = ticks,
-        investor_profile = perf,
-        use_postgres_cache = use_pg,
-        progress_cb = function(msg = "", pct = 0) write_prog(pct, msg)
-      )
-    }
-    inst_use_mirai <- requireNamespace("mirai", quietly = TRUE)
-    inst_current_job <- NULL # referencia al proceso mirai en curso (para cancelar)
-    inst_ticket <- NULL
-    inst_release <- function() {
-      if (!is.null(activity)) activity$finish(inst_ticket)
-      try(puga_job_release(inst_ticket), silent=TRUE)
-      inst_ticket <<- NULL
+    # Durable work belongs to the analysis worker, not this browser session.
+    attached_path <- NULL
+    attached_ticket <- NULL
+    terminal_seen <- NULL
+    attached_owner <- NULL
+    finish_activity <- function() {
+      if (!is.null(activity)) activity$finish(attached_ticket)
+      attached_ticket <<- NULL
     }
     session$onSessionEnded(function() {
-      if (!is.null(inst_current_job)) try(mirai::stop_mirai(inst_current_job), silent=TRUE)
-      inst_release()
-      if (!is.null(shiny::isolate(rv$prog_file))) unlink(shiny::isolate(rv$prog_file))
+      # Disconnect only detaches the viewer. Never cancel/release/delete work.
       if (!is.null(shiny::isolate(rv$wb_path))) unlink(shiny::isolate(rv$wb_path))
     })
 
-    institutional_task <- tryCatch(
-      shiny::ExtendedTask$new(function(ticks, perf, use_pg, prog_file) {
-        app_dir <- normalizePath(getwd())
-        if (inst_use_mirai) {
-          m <- mirai::mirai(
-            job(app_dir, ticks, perf, use_pg, prog_file),
-            job = inst_worker_job, app_dir = app_dir, ticks = ticks, perf = perf,
-            use_pg = use_pg, prog_file = prog_file, .timeout = puga_job_timeout_ms
-          )
-          inst_current_job <<- m
-          promises::as.promise(m)
-        } else {
-          promises::future_promise(inst_worker_job(app_dir, ticks, perf, use_pg, prog_file), seed = TRUE)
-        }
-      }),
-      error = function(e) {
-        message("Warning: Institutional ExtendedTask failed or missing: ", e$message)
-        NULL
-      }
-    )
-
     inst_finish_ok <- function(res) {
       rv$task_running <- FALSE
-      inst_release()
+      finish_activity()
       if (is.null(res) || is.null(res$summary) || nrow(res$summary) == 0) {
         rv$status <- "error"
         rv$progress_msg <- "El análisis terminó sin resultados. Verifica que los tickers existan e intenta de nuevo."
@@ -374,9 +312,9 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
         choices  = res$summary$Ticker,
         selected = res$summary$Ticker[[1]]
       )
-      wb_tmp <- tempfile(fileext = ".xlsx")
-      ok_xlsx <- tryCatch({ inst_export_analysis_to_excel(res, wb_tmp); TRUE }, error = function(e) FALSE)
-      rv$wb_path <- if (ok_xlsx) wb_tmp else NULL
+      # Generate Excel only on an explicit download. Eagerly creating thousands
+      # of worksheets blocks Shiny immediately after restoring large results.
+      rv$wb_path <- NULL
       seg <- round(as.numeric(difftime(Sys.time(), rv$started, units = "secs")))
       faltan <- setdiff(rv$tickers_req, res$summary$Ticker)
       rv$status <- "ok"
@@ -391,91 +329,96 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       inst_set_busy(FALSE)
     }
 
-    inst_finish_error <- function(err) {
-      rv$task_running <- FALSE
-      inst_release()
-      rv$status <- "error"
-      message("[Analysis] Worker failed: ", err)
-      rv$progress_msg <- "No se pudo completar el análisis. Si alcanzó 6 horas, reduce la lista de símbolos e intenta de nuevo."
-      showNotification(rv$progress_msg, type = "error", duration = 10)
-      inst_set_busy(FALSE)
+    attach_job <- function(job) {
+      attached_path <<- job$path
+      attached_ticket <<- job$request$ticket
+      terminal_seen <<- NULL
+      rv$tickers_req <- job$request$tickers
+      rv$started <- job$request$created
+      rv$cancelled <- FALSE
+      updateTextAreaInput(session,"tickers",value=paste(job$request$tickers,collapse=","))
+      updateSelectInput(session,"perfil",selected=job$request$profile)
+      updateSelectInput(session,"modo_cache",selected=if(job$request$use_pg) "Postgres" else "Local")
+      rv$task_running <- job$state$status %in% c("queued","running")
+      if(rv$task_running && !is.null(activity)) activity$start(attached_ticket)
+      shinyjs::hide("resume_btn")
+      inst_set_busy(rv$task_running)
     }
-
-    observeEvent(input$run_btn, {
-      if (isTRUE(rv$task_running)) return()
+    start_job <- function(resume=FALSE) {
+      if(isTRUE(rv$task_running)) return()
       req(can_analyze())
       tickers <- inst_parse_tickers(input$tickers)
-      if (!puga_ticker_count_allowed(tickers)) {
-        showNotification(sprintf("El máximo por análisis es de %d símbolos.", puga_max_tickers), type = "warning")
+      if(!resume && !puga_ticker_count_allowed(tickers)) {
+        showNotification(sprintf("El máximo por análisis es de %d símbolos.",puga_max_tickers),type="warning")
         return()
       }
-      if (length(tickers) == 0) {
-        showNotification("Ingresa al menos un ticker válido.", type = "warning")
+      if(!resume && !length(tickers)) {
+        showNotification("Ingresa al menos un ticker válido.",type="warning")
         return()
       }
-
-      if (!inst_use_mirai || is.null(institutional_task)) {
-        showNotification("El servicio de análisis no está disponible. Intenta más tarde.", type="warning")
-        return()
-      }
-      inst_ticket <<- tryCatch(puga_job_acquire(user_reactive()$id[[1]]), error=function(e) NULL)
-      if (is.null(inst_ticket)) {
-        showNotification("Hay análisis en curso. Espera a que termine el tuyo o vuelve a intentar en unos minutos.", type="warning")
-        return()
-      }
-      if (!is.null(activity)) activity$start(inst_ticket)
-      rv$prog_file <- tempfile("inst_prog_", fileext = ".txt")
-      writeLines(sprintf("0|Iniciando análisis de %d tickers...", length(tickers)), rv$prog_file)
-      rv$tickers_req <- tickers
-      rv$started <- Sys.time()
-      rv$cancelled <- FALSE
-      rv$task_running <- TRUE
-      rv$status <- "running"
-      rv$progress <- 0
-      inst_set_busy(TRUE)
-
-      use_pg <- identical(input$modo_cache, "Postgres") && inst_can_use_postgres_cache()
-
-      if (!is.null(institutional_task)) {
-        ok <- tryCatch({
-          institutional_task$invoke(tickers, input$perfil, use_pg, rv$prog_file)
-          TRUE
-        }, error = function(e) {
-          message("[Inst] invoke() fallido: ", e$message)
-          FALSE
-        })
-        if (ok) return()
-      }
-
-      inst_finish_error("No fue posible iniciar el proceso. Intenta más tarde.")
-    })
-
-    observeEvent(input$cancel_btn, {
-      if (!isTRUE(rv$task_running)) return()
-      rv$cancelled <- TRUE
-      rv$task_running <- FALSE
-      rv$status <- "cancelled"
-      rv$progress <- 0
-      rv$progress_msg <- "Análisis cancelado por el usuario."
-      if (inst_use_mirai && !is.null(inst_current_job)) try(mirai::stop_mirai(inst_current_job), silent = TRUE)
-      inst_release()
-      inst_set_busy(FALSE)
-      showNotification("Análisis cancelado.", type = "warning")
-    })
-
-    if (!is.null(institutional_task)) {
-      observeEvent(institutional_task$status(), {
-        st <- institutional_task$status()
-        if (!isTRUE(rv$task_running) || isTRUE(rv$cancelled)) return()
-        if (st == "success") {
-          res <- tryCatch(institutional_task$result(), error = function(e) NULL)
-          inst_finish_ok(res)
-        } else if (st == "error") {
-          err <- tryCatch({ institutional_task$result(); "error desconocido" }, error = function(e) conditionMessage(e))
-          inst_finish_error(err)
-        }
-      }, ignoreInit = TRUE)
+      job <- tryCatch(puga_analysis_submit(user_reactive()$id[[1]],tickers,input$perfil,
+        identical(input$modo_cache,"Postgres") && inst_can_use_postgres_cache(),resume=resume),
+        error=function(e) { showNotification(conditionMessage(e),type="warning"); NULL })
+      if(!is.null(job)) attach_job(job)
     }
+    observeEvent(input$run_btn,start_job())
+    observeEvent(input$resume_btn,start_job(TRUE))
+    observeEvent(input$cancel_btn, {
+      req(can_analyze())
+      if(!isTRUE(rv$task_running)) return()
+      job <- puga_analysis_latest(user_reactive()$id[[1]])
+      puga_analysis_cancel(job)
+      rv$progress_msg <- "Cancelación solicitada; el avance seguirá guardado."
+    })
+    # Reattach automatically after reload/login. Every lookup is derived from
+    # the currently authenticated owner, never a run id supplied by the client.
+    observe({
+      invalidateLater(2000,session)
+      user <- user_reactive()
+      owner <- if(is.null(user) || nrow(user)!=1L) NULL else user$id[[1]]
+      if(!identical(attached_owner,owner)) {
+        finish_activity()
+        attached_owner <<- owner
+        attached_path <<- NULL
+        terminal_seen <<- NULL
+        rv$result <- NULL
+        rv$results <- NULL
+        rv$task_running <- FALSE
+        rv$status <- "idle"
+        if(!is.null(rv$wb_path)) unlink(rv$wb_path)
+        rv$wb_path <- NULL
+      }
+      req(db_can_analyze(user))
+      job <- tryCatch(puga_analysis_latest(owner),error=function(e) {
+        rv$status <- "error"
+        rv$progress_msg <- "No se pudo leer el avance guardado. Intenta reconectar; no se reiniciará desde cero."
+        NULL
+      })
+      if(is.null(job)) return()
+      if(!identical(attached_path,job$path) || (!identical(attached_ticket,job$request$ticket) && job$state$status %in% c("queued","running"))) attach_job(job)
+      state <- job$state
+      if(is.null(state)) return()
+      if(state$status %in% c("queued","running")) {
+        rv$task_running <- TRUE
+        rv$status <- "running"
+        rv$progress <- state$pct
+        rv$progress_msg <- state$msg
+        return()
+      }
+      if(identical(terminal_seen,job$request$ticket)) return()
+      terminal_seen <<- job$request$ticket
+      rv$task_running <- FALSE
+      finish_activity()
+      inst_set_busy(FALSE)
+      if(identical(state$status,"ok")) {
+        res <- tryCatch(puga_analysis_read(file.path(job$path,"result.rds")),error=function(e) NULL)
+        inst_finish_ok(res)
+      } else {
+        rv$status <- if(identical(state$status,"cancelled")) "cancelled" else "error"
+        rv$progress_msg <- state$msg
+        if(state$status %in% c("paused","error")) shinyjs::show("resume_btn")
+      }
+    })
 
     output$download_excel <- downloadHandler(
       filename = function() {
@@ -842,7 +785,10 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
 
     output$cor_plot <- renderPlotly({
       req(rv$result$correlation)
-      inst_build_correlation_plot(rv$result$correlation)
+      matrix <- rv$result$correlation
+      visible <- head(intersect(rv$result$summary$Ticker,rownames(matrix)),100L)
+      req(length(visible)>1L)
+      inst_build_correlation_plot(matrix[visible,visible,drop=FALSE])
     })
 
     output$backtest_tbl <- renderDT({
