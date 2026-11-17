@@ -389,6 +389,9 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
         rv$wb_path <- NULL
       }
       req(db_can_analyze(user))
+      # Wait until the authenticated UI has bound its inputs. Updates sent
+      # during cookie restoration can otherwise arrive before the controls.
+      req(!is.null(input$tickers),!is.null(input$perfil),!is.null(input$modo_cache))
       job <- tryCatch(puga_analysis_latest(owner),error=function(e) {
         rv$status <- "error"
         rv$progress_msg <- "No se pudo leer el avance guardado. Intenta reconectar; no se reiniciará desde cero."
