@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage();
+    let page = await browser.newPage();
     page.on('response', async response => {
       if (response.url().includes('/dataobj/restore-auth')) {
         const headers = await response.request().allHeaders();
@@ -73,7 +73,23 @@ const assert = require('node:assert/strict');
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true);
     await page.setViewportSize({ width: 1280, height: 800 });
     console.log('PASS: 390px mobile viewport and reduced-motion preference');
-    await Promise.all([page.waitForNavigation(), signedIn.click()]);
+    // The smoke container intentionally has no queue consumer: a real durable
+    // submission must remain queued across complete loss of its only viewer.
+    await page.getByRole('tab', { name: 'Dashboard Analítico', exact: true }).or(page.getByRole('link', { name: 'Dashboard Analítico', exact: true })).click();
+    await page.getByLabel('Tickers', { exact: true }).fill('AAPL,MSFT');
+    await page.getByRole('button', { name: /Iniciar análisis$/ }).click();
+    await page.getByText(/Análisis guardado; esperando al procesador/).waitFor({ state: 'visible', timeout: 15000 });
+    const context = page.context();
+    await page.close();
+    page = await context.newPage();
+    await page.goto('http://localhost:3838/');
+    await page.getByRole('button', { name: /Cerrar sesión$/ }).waitFor({ state: 'visible', timeout: 30000 });
+    await page.getByText(/Análisis guardado; esperando al procesador/).waitFor({ state: 'visible', timeout: 15000 });
+    assert.equal(await page.getByLabel('Tickers', { exact: true }).inputValue(), 'AAPL,MSFT');
+    assert.equal(await page.getByRole('button', { name: /Procesando/ }).isDisabled(), true);
+    console.log('PASS: closing the only viewer preserves its queued analysis and reconnect restores request and progress');
+    const restoredSignedIn = page.getByRole('button', { name: /Cerrar sesión$/ });
+    await Promise.all([page.waitForNavigation(), restoredSignedIn.click()]);
     await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     assert.equal((await page.context().cookies()).some(item => item.name === 'puga_auth'), false);
     await page.reload();
