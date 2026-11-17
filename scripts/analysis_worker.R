@@ -14,12 +14,14 @@ repeat {
     paths <- unlist(lapply(owners,list.dirs,recursive=FALSE,full.names=TRUE),use.names=FALSE)
     requests <- file.path(paths,"request.rds")
     requests <- requests[file.exists(requests)]
+    seen_tokens <- character()
     for(file in requests) {
       path <- dirname(file)
       request <- puga_analysis_read(file)
       state <- puga_analysis_read(file.path(path,"state.rds"))
       if(is.null(state)) next
       token <- request$ticket
+      seen_tokens <- c(seen_tokens,token)
       # This service has one replica. Container restart kills all its child
       # processes, so abandoned jobs can safely resume from committed tickers.
       if(first && identical(state$status,"running")) {
@@ -72,7 +74,7 @@ repeat {
       },app_dir=getwd(),path=path,request=request,.timeout=remaining)
     }
     # A viewer may clear a finished workspace before the next coordinator tick.
-    for(token in names(running)) if(!mirai::unresolved(running[[token]])) running[[token]] <- NULL
+    for(token in names(running)) if(!token %in% seen_tokens && !mirai::unresolved(running[[token]])) running[[token]] <- NULL
     first <- FALSE
     # Seven-day recovery window; active workspaces are never removed.
     if(as.numeric(Sys.time())-last_cleanup>3600) {
