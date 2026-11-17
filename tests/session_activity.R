@@ -8,8 +8,8 @@ now <- 1801
 check(activity$idle()>1800,"session expires only after more than 30 idle minutes")
 activity$touch();now <- 3000
 activity$start("accepted_analysis")
-now <- 3000 + 4*60*60 - 1
-check(activity$idle()==0,"analysis still keeps session active just before the four-hour timeout")
+now <- 3000 + 6*60*60 - 1
+check(activity$idle()==0,"analysis still keeps session active just before the six-hour timeout")
 activity$finish("accepted_analysis")
 now <- now + 1800
 check(activity$idle()==1800,"full idle allowance starts after analysis completion")
