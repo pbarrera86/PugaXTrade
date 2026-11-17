@@ -1,3 +1,5 @@
+Estado 2026-11-17: el ambiente de pruebas staging fue retirado por decisión del propietario. Las menciones fechadas más abajo son evidencia histórica, no instrucciones para desplegarlo. Producción: https://app.pugaxtrade.com/.
+
 Validación local: R 4.5 / PostgreSQL 17, fixtures ficticios.
 Driver local: RPostgreSQL; CI preparado para RPostgres de producción.
 
