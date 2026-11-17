@@ -23,7 +23,7 @@ local({
       out[i] <- list(checkpoint_cb(i,function() {
         calls <<- c(calls,tickers[i])
         if(identical(tickers[i],"TWO") && sum(calls=="TWO")==1L) stop("simulated process interruption")
-        if(identical(tickers[i],"THREE")) NULL else list(ticker=tickers[i],value=42)
+        list(ticker=tickers[i],value=if(identical(tickers[i],"THREE")) NA_real_ else 42)
       }))
     }
     list(summary=data.frame(Ticker=tickers),values=out)
@@ -41,6 +41,11 @@ local({
   check(nrow(puga_analysis_read(file.path(path,"result.rds"))$summary)==3L,"final result survives a new viewer")
   puga_analysis_execute(getwd(),path,request,runner)
   check(sum(calls=="THREE")==1L,"completed no-data ticker also survives resume")
+  failed_calls <- 0L
+  for(attempt in 1:2) puga_analysis_checkpoint(path,99L,function(){failed_calls <<- failed_calls+1L;NULL})
+  check(failed_calls==2L && !file.exists(file.path(path,"tickers","00099.rds")),"failed tickers remain pending instead of poisoning resume checkpoints")
+  puga_analysis_write(list(value=NULL),file.path(path,"tickers","00099.rds"))
+  check(puga_analysis_checkpoint(path,99L,function() 42L)==42L,"legacy failed-ticker checkpoint is retried and repaired")
   file.create(file.path(path,"cancel"))
   puga_analysis_execute(getwd(),path,request,runner)
   check(puga_analysis_read(file.path(path,"state.rds"))$status=="cancelled","explicit cancellation stops work")
@@ -67,5 +72,5 @@ local({
   pipeline_env$analyze_one_ticker <- function(...) {calculated <<- calculated+1L;NULL}
   for(attempt in 1:2) try(pipeline_env$inst_run_pipeline(c("ONE","TWO"),
     checkpoint_cb=function(index,compute) puga_analysis_checkpoint(path,index,compute)),silent=TRUE)
-  check(calculated==2L,"production pipeline skips every committed ticker after recovery")
+  check(calculated==4L,"production pipeline retries failed tickers after recovery")
 })
