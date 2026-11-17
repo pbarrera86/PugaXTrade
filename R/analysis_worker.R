@@ -1,4 +1,16 @@
 # Executed in a separate container, never owned by a browser/Shiny session.
+puga_analysis_load_core <- function(app_dir) {
+  setwd(app_dir)
+  suppressPackageStartupMessages({
+    library(future); library(dplyr); library(httr); library(rvest)
+    library(xml2); library(quantmod); library(TTR); library(plotly); library(openxlsx)
+  })
+  future::plan(future::sequential)
+  core <- new.env(parent=globalenv())
+  for(file in c("R/helpers.R","R/db.R","R/finance_core.R","R/institutional_core.R"))
+    sys.source(file,envir=core)
+  core
+}
 puga_analysis_execute <- function(app_dir,path,request,runner=NULL) {
   tryCatch({
     check <- function() puga_analysis_check(path,request)
@@ -8,17 +20,12 @@ puga_analysis_execute <- function(app_dir,path,request,runner=NULL) {
     }
     progress("Recuperando avance guardado...",1)
     if(is.null(runner)) {
-      setwd(app_dir)
-      suppressPackageStartupMessages({
-        library(future); library(dplyr); library(httr); library(rvest)
-        library(xml2); library(quantmod); library(TTR); library(plotly); library(openxlsx)
-      })
-      future::plan(future::sequential)
-      source("R/db.R",local=TRUE)
-      source("R/finance_core.R",local=TRUE)
-      source("R/institutional_core.R",local=TRUE)
-      on.exit(try(pool_close(),silent=TRUE),add=TRUE)
-      runner <- inst_run_pipeline
+      core <- puga_analysis_load_core(app_dir)
+      on.exit({
+        try(core$pool_close(),silent=TRUE)
+        if(!is.null(core$pg_pool_global)) try(pool::poolClose(core$pg_pool_global),silent=TRUE)
+      },add=TRUE)
+      runner <- core$inst_run_pipeline
     }
     result <- runner(tickers=request$tickers,investor_profile=request$profile,
       use_postgres_cache=request$use_pg,progress_cb=progress,

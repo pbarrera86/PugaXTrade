@@ -74,9 +74,11 @@ puga_analysis_clear <- function(user_id) {
 puga_analysis_checkpoint <- function(path,index,compute) {
   target <- file.path(path,"tickers",sprintf("%05d.rds",as.integer(index)))
   saved <- puga_analysis_read(target)
-  if(!is.null(saved)) return(saved$value)
+  if(!is.null(saved) && (!is.null(saved$value) || index==0L)) return(saved$value)
   value <- compute()
-  # An explicit envelope records completed tickers even when no data exists.
+  # NULL from a ticker means execution failed, not that it completed. Retry it
+  # on resume. A completed no-data ticker has its normal Sin datos summary.
+  if(is.null(value) && index>0L) return(NULL)
   puga_analysis_write(list(value=value),target)
   value
 }
