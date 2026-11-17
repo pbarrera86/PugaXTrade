@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 (async () => {
   const browser = await chromium.launch({ headless: true });
   try {
-    let page = await browser.newPage();
+    const browserContext = await browser.newContext();
+    let page = await browserContext.newPage();
     page.on('response', async response => {
       if (response.url().includes('/dataobj/restore-auth')) {
         const headers = await response.request().allHeaders();
