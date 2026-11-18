@@ -333,6 +333,14 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     }
 
     attach_job <- function(job) {
+      # A newly attached run must never display/export the previous result.
+      rv$result <- NULL
+      rv$results <- NULL
+      rv$export_status <- NULL
+      rv$progress <- job$state$pct
+      rv$progress_msg <- job$state$msg
+      rv$status <- if(job$state$status %in% c("queued","running")) "running" else "idle"
+      updateSelectInput(session,"ticker_detalle",choices=character(),selected=character())
       attached_path <<- job$path
       attached_ticket <<- job$request$ticket
       terminal_seen <<- NULL
@@ -462,6 +470,15 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       }
     )
 
+    # DT reports original data row indices even after client sorting/filtering.
+    # The summary join preserves this order, so use the saved ticker identity.
+    observeEvent(input$summary_tbl_rows_selected, {
+      req(rv$result,!isTRUE(rv$task_running))
+      row <- input$summary_tbl_rows_selected
+      if(length(row)!=1L || is.na(row) || row<1L || row>nrow(rv$result$summary)) return()
+      updateSelectInput(session,"ticker_detalle",selected=rv$result$summary$Ticker[[row]])
+    },ignoreInit=TRUE)
+
     output$summary_tbl <- renderDT({
       req(rv$result)
 
@@ -567,6 +584,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
 
       dt_obj <- DT::datatable(
         df,
+        selection = "single",
         rownames = FALSE,
         escape = FALSE,
         options = list(
