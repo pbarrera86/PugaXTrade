@@ -64,6 +64,8 @@ jobs:
         run: docker build --tag pugaxtrade:ci .
       - name: Verify analysis recovery after process termination
         run: docker run --rm --entrypoint Rscript -w /srv/shiny-server/app pugaxtrade:ci tests/analysis_process_recovery.R
+      - name: Verify scalable Excel export without changing saved analysis
+        run: docker run --rm --memory 3g --entrypoint Rscript -w /srv/shiny-server/app pugaxtrade:ci tests/analysis_export.R
       - name: Start application with disposable database
         run: |
           docker run -d --name puga-ci --network host \
@@ -105,6 +107,12 @@ jobs:
         env:
           NODE_PATH: /tmp/puga-browser/node_modules
         run: node tests/browser_auth_flow.cjs
+      - name: Seed saved result for table and export acceptance
+        run: docker exec --user shiny -e PUGA_TEST_DATABASE=local-disposable -w /srv/shiny-server/app puga-ci Rscript tests/browser_result_seed.R
+      - name: Verify paging and prepared Excel download
+        env:
+          NODE_PATH: /tmp/puga-browser/node_modules
+        run: node tests/browser_export_flow.cjs
       - name: Container diagnostics
         if: always()
         run: |

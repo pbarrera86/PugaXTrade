@@ -34,6 +34,7 @@ puga_analysis_state <- function(path,status,msg,pct=0) {
 puga_analysis_submit <- function(user_id,tickers,profile,use_pg,resume=FALSE) {
   user_id <- tolower(user_id)
   old <- puga_analysis_latest(user_id)
+  if(!is.null(old) && puga_analysis_export_busy(old$path)) stop("Espera a que termine la exportación antes de iniciar otro análisis.")
   if(!is.null(old) && old$state$status %in% c("queued","running")) stop("Ya tienes un análisis en curso.")
   if(resume && (is.null(old) || !old$state$status %in% c("error","paused"))) stop("No hay un análisis pendiente para retomar.")
   token <- puga_job_acquire(user_id)
@@ -65,11 +66,17 @@ puga_analysis_cancel <- function(job) {
 puga_analysis_clear <- function(user_id) {
   job <- puga_analysis_latest(user_id)
   if(is.null(job)) return(invisible(NULL))
+  if(puga_analysis_export_busy(job$path)) stop("Espera a que termine la exportación antes de eliminar el análisis.")
   if(job$state$status %in% c("queued","running")) stop("Espera a que termine o cancela el análisis.")
   puga_job_release(job$request$ticket)
   unlink(job$path,recursive=TRUE)
   unlink(file.path(puga_analysis_user_dir(user_id),"latest.rds"))
   invisible(NULL)
+}
+puga_analysis_export_busy <- function(path) {
+  state <- puga_analysis_read(file.path(path,"export-state.rds"))
+  request <- puga_analysis_read(file.path(path,"export-request.rds"))
+  !is.null(state) && !is.null(request) && state$status %in% c("queued","running") && Sys.time()<request$requested+1800
 }
 puga_analysis_checkpoint <- function(path,index,compute) {
   target <- file.path(path,"tickers",sprintf("%05d.rds",as.integer(index)))

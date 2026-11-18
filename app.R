@@ -165,6 +165,7 @@ source("R/security.R", encoding = "UTF-8")
 source("R/session_activity.R", encoding = "UTF-8")
 source("R/job_capacity.R", encoding = "UTF-8")
 source("R/analysis_store.R", encoding = "UTF-8")
+source("R/analysis_export.R", encoding = "UTF-8")
 source("R/finance_core.R", encoding = "UTF-8") # ANÁLISIS + Excel
 source("R/institutional_core.R", encoding = "UTF-8")
 source("R/extremos_core.R", encoding = "UTF-8") # Screener Extremos Locales (QMin/QMax)

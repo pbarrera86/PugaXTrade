@@ -48,7 +48,7 @@ institutional_ui <- function(id) {
               ),
               fluidRow(
                 column(6, actionButton(ns("glossary_btn"), "Glosario", class = "btn-warning w-100")),
-                column(6, downloadButton(ns("download_excel"), "Exportar Excel", class = "btn-primary w-100"))
+                column(6, uiOutput(ns("export_ui")))
               ),
               br(),
               uiOutput(ns("progress_ui")),
@@ -157,6 +157,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     ns <- session$ns
 
     rv <- reactiveValues(
+      export_status = NULL,
       results       = NULL,
       progress      = 0,
       progress_msg  = "Esperando análisis...",
@@ -167,6 +168,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       status        = "idle", # idle | running | ok | error | cancelled
       prog_file     = NULL, # archivo donde el proceso escribe "pct|mensaje"
       started       = NULL,
+      finished      = NULL,
       tickers_req   = character(0)
     )
 
@@ -204,7 +206,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     # ---- Progreso real (escrito por el proceso de análisis en un archivo) ----
     # Formato del archivo: "pct|mensaje"
     inst_ctrl_ids <- c("run_btn", "reset_btn", "glossary_btn", "download_excel", "clear_cache_btn",
-                       "tickers", "perfil", "modo_cache")
+                       "tickers", "perfil", "modo_cache", "export_btn")
     inst_set_busy <- function(busy) {
       for (i in inst_ctrl_ids) {
         if (busy) shinyjs::disable(i) else shinyjs::enable(i)
@@ -275,6 +277,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       attached_path <<- NULL
       rv$result <- NULL
       rv$results <- NULL
+      rv$export_status <- NULL
       if (!is.null(rv$wb_path)) unlink(rv$wb_path)
       rv$wb_path <- NULL
       rv$status <- "idle"
@@ -315,7 +318,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       # Generate Excel only on an explicit download. Eagerly creating thousands
       # of worksheets blocks Shiny immediately after restoring large results.
       rv$wb_path <- NULL
-      seg <- round(as.numeric(difftime(Sys.time(), rv$started, units = "secs")))
+      seg <- round(as.numeric(difftime(rv$finished %||% Sys.time(), rv$started, units = "secs")))
       faltan <- setdiff(rv$tickers_req, res$summary$Ticker)
       rv$status <- "ok"
       rv$progress <- 100
@@ -335,6 +338,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       terminal_seen <<- NULL
       rv$tickers_req <- job$request$tickers
       rv$started <- job$request$created
+      rv$finished <- if(identical(job$state$status,"ok")) job$state$updated else NULL
       rv$cancelled <- FALSE
       updateTextAreaInput(session,"tickers",value=paste(job$request$tickers,collapse=","))
       updateSelectInput(session,"perfil",selected=job$request$profile)
@@ -383,6 +387,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
         terminal_seen <<- NULL
         rv$result <- NULL
         rv$results <- NULL
+        rv$export_status <- NULL
         rv$task_running <- FALSE
         rv$status <- "idle"
         if(!is.null(rv$wb_path)) unlink(rv$wb_path)
@@ -408,12 +413,14 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
         rv$progress_msg <- state$msg
         return()
       }
+      rv$export_status <- puga_analysis_read(file.path(job$path,"export-state.rds"))
       if(identical(terminal_seen,job$request$ticket)) return()
       terminal_seen <<- job$request$ticket
       rv$task_running <- FALSE
       finish_activity()
       inst_set_busy(FALSE)
       if(identical(state$status,"ok")) {
+        rv$finished <- state$updated
         res <- tryCatch(puga_analysis_read(file.path(job$path,"result.rds")),error=function(e) NULL)
         inst_finish_ok(res)
       } else {
@@ -423,18 +430,35 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       }
     })
 
+    output$export_ui <- renderUI({
+      if(is.null(rv$result) || isTRUE(rv$task_running))
+        return(actionButton(ns("export_btn"),"Exportar Excel",icon=icon("download"),class="btn-primary w-100",disabled="disabled"))
+      state <- rv$export_status
+      if(!is.null(state) && identical(state$status,"ready"))
+        return(tagList(downloadButton(ns("download_excel"),"Descargar Excel",class="btn-primary w-100"),p(class="text-muted",state$msg)))
+      preparing <- !is.null(state) && state$status %in% c("queued","running")
+      button <- actionButton(ns("export_btn"),if(preparing) "Preparando Excel..." else "Exportar Excel",icon=icon("download"),class="btn-primary w-100")
+      if(preparing) button$attribs$disabled <- "disabled"
+      tagList(button,if(!is.null(state)) p(class="text-muted",state$msg))
+    })
+    observeEvent(input$export_btn,{
+      req(can_analyze(),rv$result,!isTRUE(rv$task_running))
+      tryCatch({
+        job <- puga_export_request(user_reactive()$id[[1]])
+        rv$export_status <- puga_analysis_read(file.path(job$path,"export-state.rds"))
+        if(!is.null(activity)) activity$touch()
+      },error=function(e) showNotification("No se pudo solicitar Excel. Tus resultados siguen guardados; intenta de nuevo.",type="warning"))
+    })
     output$download_excel <- downloadHandler(
-      filename = function() {
-        paste0("analisis_bursatil_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".xlsx")
-      },
-      content = function(file) {
-        req(can_analyze(), rv$result)
-        # Usar el archivo pre-generado si existe (evita re-ejecutar la exportación completa)
-        if (!is.null(rv$wb_path) && file.exists(rv$wb_path)) {
-          file.copy(rv$wb_path, file, overwrite = TRUE)
-        } else {
-          inst_export_analysis_to_excel(rv$result, file)
-        }
+      filename=function() paste0("analisis_bursatil_",format(Sys.time(),"%Y%m%d_%H%M%S"),".xlsx"),
+      contentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      content=function(file) {
+        req(can_analyze())
+        job <- puga_analysis_latest(user_reactive()$id[[1]])
+        req(!is.null(job),identical(job$state$status,"ok"))
+        workbook <- file.path(job$path,"analysis.xlsx")
+        req(file.exists(workbook))
+        if(!file.copy(workbook,file,overwrite=TRUE)) stop("No se pudo descargar el archivo preparado.")
       }
     )
 
@@ -548,6 +572,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
         options = list(
           scrollX      = TRUE,
           pageLength   = 10,
+          lengthMenu   = c(10,25,50,100,250,500),
           autoWidth    = TRUE,
           columnDefs   = col_defs,
           initComplete = JS(js_init)
@@ -571,7 +596,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       }
 
       dt_obj
-    })
+    }, server=FALSE)
 
     output$ranking_tbl <- renderDT({
       req(rv$result)
@@ -596,7 +621,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       }
 
       dt_obj
-    })
+    }, server=FALSE)
 
 
     output$ticker_badges_ui <- renderUI({
@@ -758,7 +783,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
           )
         )
       )
-    })
+    }, server=FALSE)
 
     output$price_plot <- renderPlotly({
       req(rv$result, input$ticker_detalle)
@@ -805,6 +830,6 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
         rownames = FALSE,
         options = list(pageLength = 10, scrollX = TRUE, autoWidth = TRUE, dom = "t")
       )
-    })
+    }, server=FALSE)
   })
 }
