@@ -168,6 +168,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       status        = "idle", # idle | running | ok | error | cancelled
       prog_file     = NULL, # archivo donde el proceso escribe "pct|mensaje"
       started       = NULL,
+      finished      = NULL,
       tickers_req   = character(0)
     )
 
@@ -317,7 +318,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       # Generate Excel only on an explicit download. Eagerly creating thousands
       # of worksheets blocks Shiny immediately after restoring large results.
       rv$wb_path <- NULL
-      seg <- round(as.numeric(difftime(Sys.time(), rv$started, units = "secs")))
+      seg <- round(as.numeric(difftime(rv$finished %||% Sys.time(), rv$started, units = "secs")))
       faltan <- setdiff(rv$tickers_req, res$summary$Ticker)
       rv$status <- "ok"
       rv$progress <- 100
@@ -337,6 +338,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       terminal_seen <<- NULL
       rv$tickers_req <- job$request$tickers
       rv$started <- job$request$created
+      rv$finished <- if(identical(job$state$status,"ok")) job$state$updated else NULL
       rv$cancelled <- FALSE
       updateTextAreaInput(session,"tickers",value=paste(job$request$tickers,collapse=","))
       updateSelectInput(session,"perfil",selected=job$request$profile)
@@ -418,6 +420,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       finish_activity()
       inst_set_busy(FALSE)
       if(identical(state$status,"ok")) {
+        rv$finished <- state$updated
         res <- tryCatch(puga_analysis_read(file.path(job$path,"result.rds")),error=function(e) NULL)
         inst_finish_ok(res)
       } else {

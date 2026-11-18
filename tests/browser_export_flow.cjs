@@ -14,6 +14,7 @@ const assert = require('node:assert/strict');
     await page.getByLabel('Contraseña',{exact:true}).fill('Browser fixture password 2026');
     await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Entrar',exact:true}).click()]);
     await page.getByText(/Proceso concluido con éxito\. 500 tickers/).waitFor({timeout:30000});
+    const completedMessage=await page.getByText(/Proceso concluido con éxito\. 500 tickers/).textContent();
     const table=page.locator('#main-inst-summary_tbl');
     let ajax=0;
     page.on('request',r=>{if(r.url().includes('/dataobj/')&&!r.url().includes('restore-auth'))ajax++;});
@@ -33,6 +34,9 @@ const assert = require('node:assert/strict');
     const bytes=fs.readFileSync('/tmp/puga-browser-export.xlsx');
     assert.equal(bytes.subarray(0,2).toString(),'PK');assert.ok(bytes.length>1000);
     assert.equal(dialogs.length,0,'no DataTables warning may appear');
+    await page.reload();
+    await page.getByRole('link',{name:/Descargar Excel$/}).waitFor({timeout:30000});
+    assert.equal(await page.getByText(/Proceso concluido con éxito\. 500 tickers/).textContent(),completedMessage,'completion duration must stay fixed after export and reload');
     console.log('PASS: client-side paging/filtering, asynchronous export status and authenticated XLSX download');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
