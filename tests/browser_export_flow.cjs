@@ -29,7 +29,10 @@ const {expect} = require('playwright/test');
     await expect(page.locator('#main-inst-ticker_detalle')).toHaveValue('FIX00042');
     await expect(page.locator('#main-inst-price_plot .gtitle')).toHaveText('Precio y medias móviles - FIX00042');
     await expect(page.locator('#main-inst-detail_tbl').getByRole('row').filter({hasText:'Precio actual (USD)'})).toContainText('142');
-    await page.locator('#main-inst-ticker_detalle').selectOption('FIX00003',{force:true});
+    // Selectize keeps only the selected option in its hidden native select.
+    // Use the searchable dropdown exactly as a user does.
+    await page.locator('#main-inst-ticker_detalle + .selectize-control .selectize-input input').fill('FIX00003');
+    await page.locator('#main-inst-ticker_detalle + .selectize-control .selectize-dropdown [data-value="FIX00003"]').click();
     await expect(page.locator('#main-inst-price_plot .gtitle')).toHaveText('Precio y medias móviles - FIX00003');
     await expect(page.locator('#main-inst-detail_tbl').getByRole('row').filter({hasText:'Precio actual (USD)'})).toContainText('103');
     await table.getByLabel('Search:',{exact:true}).fill('');
