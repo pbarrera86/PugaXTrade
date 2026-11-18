@@ -55,6 +55,7 @@ const {expect} = require('playwright/test');
     assert.equal(await page.getByText(/Proceso concluido con éxito\. 500 tickers/).textContent(),completedMessage,'completion duration must stay fixed after export and reload');
     await page.getByLabel('Tickers',{exact:true}).fill('NEW');
     await page.getByRole('button',{name:/Iniciar análisis$/}).click();
+    await expect(page.getByRole('button',{name:/Procesando/})).toBeDisabled({timeout:15000});
     await expect(page.getByRole('button',{name:/Exportar Excel$/})).toBeDisabled();
     await expect(page.getByRole('link',{name:/Descargar Excel$/})).toHaveCount(0);
     await expect(page.locator('#main-inst-summary_tbl .dataTables_wrapper')).toHaveCount(0);

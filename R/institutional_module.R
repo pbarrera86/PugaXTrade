@@ -205,8 +205,10 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
 
     # ---- Progreso real (escrito por el proceso de análisis en un archivo) ----
     # Formato del archivo: "pct|mensaje"
-    inst_ctrl_ids <- c("run_btn", "reset_btn", "glossary_btn", "download_excel", "clear_cache_btn",
-                       "tickers", "perfil", "modo_cache", "export_btn")
+    # Export controls are dynamic: renderUI owns their disabled/ready state.
+    # Delayed shinyjs enable messages must not enable a replacement button.
+    inst_ctrl_ids <- c("run_btn", "reset_btn", "glossary_btn", "clear_cache_btn",
+                       "tickers", "perfil", "modo_cache")
     inst_set_busy <- function(busy) {
       for (i in inst_ctrl_ids) {
         if (busy) shinyjs::disable(i) else shinyjs::enable(i)
