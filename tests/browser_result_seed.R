@@ -19,8 +19,13 @@ if(identical(Sys.getenv("PUGA_PREPARE_FIXTURE_EXPORT"),"true")) {
   result <- base
   result$summary <- base$summary[rep(1,500),];result$summary$Ticker <- symbols
   result$ranking <- base$ranking[rep(1,500),];result$ranking$Ticker <- symbols;result$ranking$Rank <- seq_along(symbols)
-  result$details <- setNames(rep(list(base$details[[1]]),500),symbols)
-  result$history <- setNames(rep(list(NULL),500),symbols)
+  result$details <- setNames(lapply(seq_along(symbols),function(i) {
+    d <- base$details[[1]]
+    d$Valor[d$Indicador=="Precio actual (USD)"] <- 100+i
+    d
+  }),symbols)
+  result$history <- setNames(lapply(seq_along(symbols),function(i) data.frame(
+    Fecha=as.Date("2026-01-01")+0:9,Cierre=100+i+0:9,SMA20=99+i+0:9,SMA50=98+i+0:9,SMA200=97+i+0:9)),symbols)
   result$backtest <- base$backtest[rep(1:2,500),];result$backtest$Ticker <- rep(symbols,each=2)
   old <- puga_analysis_latest(uid)
   if(!is.null(old)) {

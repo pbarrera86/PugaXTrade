@@ -205,8 +205,9 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
 
     # ---- Progreso real (escrito por el proceso de análisis en un archivo) ----
     # Formato del archivo: "pct|mensaje"
-    inst_ctrl_ids <- c("run_btn", "reset_btn", "glossary_btn", "download_excel", "clear_cache_btn",
-                       "tickers", "perfil", "modo_cache", "export_btn")
+    # Export controls are dynamic: renderUI owns their disabled/ready state.
+    inst_ctrl_ids <- c("run_btn", "reset_btn", "glossary_btn", "clear_cache_btn",
+                       "tickers", "perfil", "modo_cache")
     inst_set_busy <- function(busy) {
       for (i in inst_ctrl_ids) {
         if (busy) shinyjs::disable(i) else shinyjs::enable(i)
@@ -333,6 +334,14 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     }
 
     attach_job <- function(job) {
+      # A newly attached run must never display/export the previous result.
+      rv$result <- NULL
+      rv$results <- NULL
+      rv$export_status <- NULL
+      rv$progress <- job$state$pct
+      rv$progress_msg <- job$state$msg
+      rv$status <- if(job$state$status %in% c("queued","running")) "running" else "idle"
+      updateSelectInput(session,"ticker_detalle",choices=character(),selected=character())
       attached_path <<- job$path
       attached_ticket <<- job$request$ticket
       terminal_seen <<- NULL
@@ -432,7 +441,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
 
     output$export_ui <- renderUI({
       if(is.null(rv$result) || isTRUE(rv$task_running))
-        return(actionButton(ns("export_btn"),"Exportar Excel",icon=icon("download"),class="btn-primary w-100",disabled="disabled"))
+        return(actionButton(ns("export_btn"),"Exportar Excel",icon=icon("download"),class="btn-primary w-100",disabled=TRUE))
       state <- rv$export_status
       if(!is.null(state) && identical(state$status,"ready"))
         return(tagList(downloadButton(ns("download_excel"),"Descargar Excel",class="btn-primary w-100"),p(class="text-muted",state$msg)))
@@ -462,8 +471,17 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
       }
     )
 
+    # DT reports original data row indices even after client sorting/filtering.
+    # The summary join preserves this order, so use the saved ticker identity.
+    observeEvent(input$summary_tbl_rows_selected, {
+      req(rv$result,!isTRUE(rv$task_running))
+      row <- input$summary_tbl_rows_selected
+      if(length(row)!=1L || is.na(row) || row<1L || row>nrow(rv$result$summary)) return()
+      updateSelectInput(session,"ticker_detalle",selected=rv$result$summary$Ticker[[row]])
+    },ignoreInit=TRUE)
+
     output$summary_tbl <- renderDT({
-      req(rv$result)
+      if(is.null(rv$result)) return(NULL)
 
       df <- tryCatch(
         {
@@ -567,6 +585,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
 
       dt_obj <- DT::datatable(
         df,
+        selection = "single",
         rownames = FALSE,
         escape = FALSE,
         options = list(
@@ -599,7 +618,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     }, server=FALSE)
 
     output$ranking_tbl <- renderDT({
-      req(rv$result)
+      if(is.null(rv$result)) return(NULL)
 
       df <- rv$result$ranking
       message("[INST] Renderizando RankingTbl con ", nrow(df), " filas.")
@@ -710,10 +729,11 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     })
 
     output$detail_tbl <- renderDT({
-      req(rv$result, input$ticker_detalle)
+      if(is.null(rv$result)) return(NULL)
+      req(input$ticker_detalle)
 
       df <- rv$result$details[[input$ticker_detalle]]
-      req(!is.null(df))
+      if(is.null(df)) return(NULL)
 
       bt <- rv$result$backtest %>% filter(Ticker == input$ticker_detalle)
       if (nrow(bt) == 2) {
@@ -786,10 +806,11 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     }, server=FALSE)
 
     output$price_plot <- renderPlotly({
-      req(rv$result, input$ticker_detalle)
+      if(is.null(rv$result)) return(plotly::plotly_empty())
+      req(input$ticker_detalle)
 
       hist_df <- rv$result$history[[input$ticker_detalle]]
-      req(!is.null(hist_df), nrow(hist_df) > 0)
+      if(is.null(hist_df) || nrow(hist_df)==0L) return(plotly::plotly_empty())
 
       p <- inst_build_price_plot(hist_df, input$ticker_detalle)
 
@@ -812,7 +833,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     })
 
     output$cor_plot <- renderPlotly({
-      req(rv$result$correlation)
+      if(is.null(rv$result$correlation)) return(plotly::plotly_empty())
       matrix <- rv$result$correlation
       visible <- head(intersect(rv$result$summary$Ticker,rownames(matrix)),100L)
       req(length(visible)>1L)
@@ -820,7 +841,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     })
 
     output$backtest_tbl <- renderDT({
-      req(rv$result$backtest)
+      if(is.null(rv$result$backtest)) return(NULL)
       datatable(
         rv$result$backtest %>%
           mutate(
