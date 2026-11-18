@@ -4,8 +4,10 @@ source("R/security.R")
 source("R/job_capacity.R")
 source("R/analysis_store.R")
 source("R/analysis_worker.R")
+source("R/analysis_export.R")
 dir.create(puga_analysis_root(),recursive=TRUE,showWarnings=FALSE,mode="0700")
 running <- list()
+export_active <- NULL
 first <- TRUE
 last_cleanup <- as.numeric(Sys.time())
 repeat {
@@ -75,13 +77,14 @@ repeat {
     }
     # A viewer may clear a finished workspace before the next coordinator tick.
     for(token in names(running)) if(!token %in% seen_tokens && !mirai::unresolved(running[[token]])) running[[token]] <- NULL
+    export_active <- puga_export_tick(export_active,requests,first=first,analysis_running=length(running)>0L)
     first <- FALSE
     # Seven-day recovery window; active workspaces are never removed.
     if(as.numeric(Sys.time())-last_cleanup>3600) {
       for(file in requests) {
         path <- dirname(file)
         state <- puga_analysis_read(file.path(path,"state.rds"))
-        if(!is.null(state) && !state$status %in% c("queued","running") &&
+        if(!is.null(state) && !state$status %in% c("queued","running") && !puga_analysis_export_busy(path) &&
            as.numeric(difftime(Sys.time(),state$updated,units="days"))>7) {
           pointer <- file.path(dirname(path),"latest.rds")
           if(identical(puga_analysis_read(pointer),basename(path))) unlink(pointer)
