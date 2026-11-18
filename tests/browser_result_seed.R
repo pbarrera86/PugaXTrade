@@ -23,7 +23,10 @@ if(identical(Sys.getenv("PUGA_PREPARE_FIXTURE_EXPORT"),"true")) {
   result$history <- setNames(rep(list(NULL),500),symbols)
   result$backtest <- base$backtest[rep(1:2,500),];result$backtest$Ticker <- rep(symbols,each=2)
   old <- puga_analysis_latest(uid)
-  if(!is.null(old)) {puga_job_release(old$request$ticket);unlink(old$path,recursive=TRUE)}
+  if(!is.null(old)) {
+    puga_analysis_state(old$path,"cancelled","Replacing disposable browser fixture")
+    puga_analysis_clear(uid)
+  }
   job <- puga_analysis_submit(uid,symbols,"Balanceado",FALSE)
   puga_analysis_write(result,file.path(job$path,"result.rds"))
   puga_analysis_state(job$path,"ok","fixture complete",100)
