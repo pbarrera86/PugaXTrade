@@ -206,7 +206,6 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
     # ---- Progreso real (escrito por el proceso de análisis en un archivo) ----
     # Formato del archivo: "pct|mensaje"
     # Export controls are dynamic: renderUI owns their disabled/ready state.
-    # Delayed shinyjs enable messages must not enable a replacement button.
     inst_ctrl_ids <- c("run_btn", "reset_btn", "glossary_btn", "clear_cache_btn",
                        "tickers", "perfil", "modo_cache")
     inst_set_busy <- function(busy) {
@@ -442,7 +441,7 @@ institutional_server <- function(id, user_reactive, activity = NULL) {
 
     output$export_ui <- renderUI({
       if(is.null(rv$result) || isTRUE(rv$task_running))
-        return(actionButton(ns("export_btn"),"Exportar Excel",icon=icon("download"),class="btn-primary w-100",disabled="disabled"))
+        return(actionButton(ns("export_btn"),"Exportar Excel",icon=icon("download"),class="btn-primary w-100",disabled=TRUE))
       state <- rv$export_status
       if(!is.null(state) && identical(state$status,"ready"))
         return(tagList(downloadButton(ns("download_excel"),"Descargar Excel",class="btn-primary w-100"),p(class="text-muted",state$msg)))
